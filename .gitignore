@@ -1,0 +1,11 @@
+.project
+.cproject
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+cmake_install.cmake
+Makefile
+test_pa
+CTestTestfile.cmake
+coverage.info
+*~
