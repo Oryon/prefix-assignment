@@ -48,6 +48,9 @@ typedef uint16_t pa_rule_priority;
  * The routine is never run synchronously, even when the delay is set to 0. */
 #define PA_RUN_DELAY 20
 
+/* Default flooding delay */
+#define PA_DEFAULT_FLOODING_DELAY 10000
+
 
 
 /***************************
@@ -58,7 +61,7 @@ typedef uint16_t pa_rule_priority;
 struct pa_core {
 	struct btrie prefixes;           /* btrie containing all Assigned and Advertised Prefixes */
 	uint8_t node_id[PA_NODE_ID_LEN]; /* The Node ID of the local node. Initial value is 0. */
-	uint32_t flooding_delay;         /* The Flooding Delay. Initial value is 10 seconds. */
+	uint32_t flooding_delay;         /* The Flooding Delay. Initial value is PA_DEFAULT_FLOODING_DELAY. */
 	struct list_head users;
 	struct list_head links;
 	struct list_head dps;
@@ -138,6 +141,7 @@ struct pa_ap {
 	uint8_t assigned  : 1;          /* There is an associated Assigned Prefix. */
 	uint8_t published : 1;          /* The AP is published. */
 	uint8_t applied   : 1;          /* The AP is applied. */
+	uint8_t adopted   : 1;          /* The AP will be adopted. */
 	struct in6_addr prefix;         /* (if assigned) The AP prefix. */
 	uint8_t plen;                   /* (if assigned) The AP prefix length. */
 	pa_priority priority;           /* (if published) The Advertised Prefix Priority. */

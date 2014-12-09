@@ -97,14 +97,13 @@ static void pa_routine(struct pa_ap *ap, bool backoff)
 static void pa_backoff_to(struct uloop_timeout *to)
 {
 	struct pa_ap *ap = container_of(to, struct pa_ap, backoff_to);
-	if(ap->published) {
-		//Apply timeout
+	if(ap->adopted) { //Adopt timeout
+		pa_ap_set_published(ap, 1);
+		if(!ap->applied)
+			uloop_timeout_set(&ap->backoff_to, 2*ap->core->flooding_delay);
+	} else if(ap->assigned) { //Apply timeout
 		pa_ap_set_applied(ap, 1);
-	} else if(ap->assigned) {
-		//Adopt timeout
-		//TODO
-	} else {
-		//Creation delay
+	} else { //Backoff delay
 		pa_routine(ap, true);
 	}
 }
@@ -299,6 +298,8 @@ void pa_core_init(struct pa_core *core)
 	INIT_LIST_HEAD(&core->dps);
 	INIT_LIST_HEAD(&core->links);
 	INIT_LIST_HEAD(&core->users);
+	INIT_LIST_HEAD(&core->rules);
 	btrie_init(&core->prefixes);
 	memset(core->node_id, 0, PA_NODE_ID_LEN);
+	core->flooding_delay = PA_DEFAULT_FLOODING_DELAY;
 }
