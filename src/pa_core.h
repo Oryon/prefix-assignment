@@ -14,13 +14,19 @@
 #define PA_CORE_H_
 
 #include <netinet/in.h>
-#include <stdint.h>
+#include <inttypes.h>
 
 #include <libubox/list.h>
 #include <libubox/uloop.h>
 
 #include "btrie.h"
 
+#ifdef PA_STDOUT
+#include <stdio.h>
+#define PA_WARNING(format, ...) printf("PA Warning : "format"\n", ##__VA_ARGS__)
+#define PA_INFO(format, ...)    printf("PA Info    : "format"\n", ##__VA_ARGS__)
+#define PA_DEBUG(format, ...)   printf("PA Debug   : "format"\n", ##__VA_ARGS__)
+#endif
 
 /***************************
  *    Global parameters.   *
@@ -30,12 +36,17 @@
 #ifndef PA_WARNING
 #define PA_WARNING(format, ...)
 #endif
-#ifndef PA_LOG
-#define PA_LOG(format, ...)
+#ifndef PA_INFO
+#define PA_INFO(format, ...)
+#endif
+#ifndef PA_DEBUG
+#define PA_DEBUG(format, ...)
 #endif
 
 /* Length, in byte, of a Node ID. */
-#define PA_NODE_ID_LEN 8
+#define PA_NODE_ID_LEN 4
+#define PA_NODE_ID_L   "0x%08"PRIx32
+#define PA_NODE_ID_LA(node_id) *((uint32_t *)node_id)
 
 /* Advertised Prefix Priority type. */
 typedef uint8_t pa_priority;
@@ -110,7 +121,6 @@ struct pa_dp {
 	struct list_head aps;   /* List of Assigned Prefixes from that Delegated Prefix. */
 	struct in6_addr prefix; /* The delegated prefix value. */
 	uint8_t plen;           /* The prefix length. */
-	const char *name;       /* Name, displayed in logs. */
 };
 
 /* Adds and deletes a Delegated Prefix */

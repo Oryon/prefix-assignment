@@ -164,6 +164,7 @@ void pa_dp_del(struct pa_dp *dp)
 
 int pa_dp_add(struct pa_core *core, struct pa_dp *dp)
 {
+	INIT_LIST_HEAD(&dp->aps);
 	struct pa_link *link;
 	pa_for_each_link(core, link) {
 		if(pa_ap_create(core, link, dp)) {
@@ -194,6 +195,7 @@ void pa_link_del(struct pa_link *link)
 
 int pa_link_add(struct pa_core *core, struct pa_link *link)
 {
+	INIT_LIST_HEAD(&link->aps);
 	struct pa_dp *dp;
 	pa_for_each_dp(core, dp) {
 		if(pa_ap_create(core, link, dp)) {
@@ -282,6 +284,7 @@ void pa_core_set_flooding_delay(struct pa_core *core, uint32_t flooding_delay)
 
 void pa_core_set_node_id(struct pa_core *core, const uint8_t node_id[])
 {
+	PA_DEBUG("Set node ID to "PA_NODE_ID_L, PA_NODE_ID_LA(node_id));
 	struct pa_link *link;
 	struct pa_ap *ap;
 	if(memcmp(node_id, core->node_id, PA_NODE_ID_LEN)) {
@@ -295,6 +298,7 @@ void pa_core_set_node_id(struct pa_core *core, const uint8_t node_id[])
 
 void pa_core_init(struct pa_core *core)
 {
+	PA_DEBUG("Initialize pa core");
 	INIT_LIST_HEAD(&core->dps);
 	INIT_LIST_HEAD(&core->links);
 	INIT_LIST_HEAD(&core->users);

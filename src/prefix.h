@@ -18,4 +18,8 @@ bool prefix_contains(const struct in6_addr *p, uint8_t plen, const struct in6_ad
 
 #define prefix_overlap(p1, plen1, p2, plen2) ((plen1 > plen2)?prefix_contains(p2, plen2, p1):prefix_contains(p1, plen1, p2))
 
+const char *prefix_ntop(char *dst, size_t bufflen, const struct in6_addr *addr, uint8_t plen);
+
+#define PREFIX_REPR(p, plen) (plen?prefix_ntop(alloca(INET6_ADDRSTRLEN + 4), INET6_ADDRSTRLEN + 4,  p, plen):"::/0")
+
 #endif /* PREFIX_H_ */
