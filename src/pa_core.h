@@ -62,6 +62,7 @@ struct pa_core {
 	struct list_head users;
 	struct list_head links;
 	struct list_head dps;
+	struct list_head rules;
 };
 
 
@@ -89,8 +90,9 @@ void pa_core_set_flooding_delay(struct pa_core *core, uint32_t flooding_delay);
  * Structure used to identify a Shared or Private Link.
  */
 struct pa_link {
-	struct list_head le;
-	struct list_head aps;
+	struct list_head le;  /* Linked in pa_core. */
+	struct list_head aps; /* List of Assigned Prefixes assigned to this Link. */
+	const char *name;     /* Name, displayed in logs. */
 };
 
 /* Adds and deletes a Link for prefix assignment */
@@ -101,13 +103,14 @@ void pa_link_del(struct pa_link *);
  * Structure used to identify a Delegated Prefix.
  */
 struct pa_dp {
-	struct list_head le;
-	struct list_head aps;
-	struct in6_addr prefix;
-	uint8_t plen;
+	struct list_head le;    /* Linked in pa_core. */
+	struct list_head aps;   /* List of Assigned Prefixes from that Delegated Prefix. */
+	struct in6_addr prefix; /* The delegated prefix value. */
+	uint8_t plen;           /* The prefix length. */
+	const char *name;       /* Name, displayed in logs. */
 };
 
-/* Adds and deletes a Delegated Prefix for prefix assignment */
+/* Adds and deletes a Delegated Prefix */
 int pa_dp_add(struct pa_core *, struct pa_dp *);
 void pa_dp_del(struct pa_dp *);
 

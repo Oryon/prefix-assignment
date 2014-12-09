@@ -204,6 +204,30 @@ int pa_link_add(struct pa_core *core, struct pa_link *link)
 	return 0;
 }
 
+void pa_rule_add(struct pa_core *core, struct pa_rule *rule)
+{
+	list_add(&rule->le, &core->rules);
+	/* Schedule all routines */
+	struct pa_link *link;
+	struct pa_ap *ap;
+	pa_for_each_link(core, link)
+		pa_for_each_ap_in_link(link, ap)
+			pa_routine_schedule(ap);
+}
+
+void pa_rule_del(struct pa_core *core, struct pa_rule *rule)
+{
+	list_del(&rule->le);
+	struct pa_link *link;
+	struct pa_ap *ap;
+	pa_for_each_link(core, link)
+		pa_for_each_ap_in_link(link, ap) {
+			pa_routine_schedule(ap);
+			if(ap->rule == rule)
+				ap->rule = NULL; //Make it orphan
+		}
+}
+
 void pa_core_set_flooding_delay(struct pa_core *core, uint32_t flooding_delay)
 {
 	struct pa_link *link;
