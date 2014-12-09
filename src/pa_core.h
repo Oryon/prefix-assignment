@@ -164,10 +164,10 @@ struct pa_pp {
 int pa_pp_add(struct pa_core *, struct pa_pp *);
 
 /* Removes an added Advertised Prefix. */
-int pa_pp_del(struct pa_core *, struct pa_pp *);
+void pa_pp_del(struct pa_core *, struct pa_pp *);
 
 /* Tell the content of the Advertised Prefix was changes. */
-int pa_pp_update(struct pa_core *, struct pa_pp *);
+void pa_pp_update(struct pa_core *, struct pa_pp *);
 
 
 /***************************

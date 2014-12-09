@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "prefix.h"
+
 #ifndef container_of
 #define container_of(ptr, type, member) (           \
     (type *)( (char *)ptr - offsetof(type,member) ))
@@ -202,6 +204,39 @@ int pa_link_add(struct pa_core *core, struct pa_link *link)
 	}
 	list_add(&link->le, &core->links);
 	return 0;
+}
+
+/* Tell the content of the Advertised Prefix was changes. */
+void pa_pp_update(struct pa_core *core, struct pa_pp *pp)
+{
+	struct pa_dp *dp;
+	struct pa_ap *ap;
+	pa_for_each_dp(core, dp) {
+		/* Schedule all for dps overlapping with the pp. */
+		//TODO: Maybe not necessary to schedule if we have Current and pp is not overlapping with it.
+		if(prefix_overlap(&dp->prefix, dp->plen, &pp->prefix, pp->plen)) {
+			pa_for_each_ap_in_dp(dp, ap)
+								pa_routine_schedule(ap);
+		}
+	}
+}
+
+/* Adds a new Advertised Prefix. */
+int pa_pp_add(struct pa_core *core, struct pa_pp *pp)
+{
+	pp->in_core.type = PAT_PP;
+	if(btrie_add(&core->prefixes, &pp->in_core.be, (btrie_key_t *)&pp->prefix, pp->plen))
+		return -1;
+
+	pa_pp_update(core, pp);
+	return 0;
+}
+
+/* Removes an added Advertised Prefix. */
+void pa_pp_del(struct pa_core *core, struct pa_pp *pp)
+{
+	btrie_remove(&pp->in_core.be);
+	pa_pp_update(core, pp);
 }
 
 void pa_rule_add(struct pa_core *core, struct pa_rule *rule)
