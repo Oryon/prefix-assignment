@@ -20,33 +20,26 @@
 #include <libubox/uloop.h>
 
 #include "btrie.h"
+#include "prefix.h"
+
+
+/***************************
+ *    Global parameters.   *
+ ***************************/
 
 #ifdef PA_STDOUT
 #include <stdio.h>
 #define PA_WARNING(format, ...) printf("PA Warning : "format"\n", ##__VA_ARGS__)
 #define PA_INFO(format, ...)    printf("PA Info    : "format"\n", ##__VA_ARGS__)
 #define PA_DEBUG(format, ...)   printf("PA Debug   : "format"\n", ##__VA_ARGS__)
-#endif
-
-/***************************
- *    Global parameters.   *
- ***************************/
-
-/* Logging functions used by all pa files. */
-#ifndef PA_WARNING
+#else
 #define PA_WARNING(format, ...)
-#endif
-#ifndef PA_INFO
 #define PA_INFO(format, ...)
-#endif
-#ifndef PA_DEBUG
 #define PA_DEBUG(format, ...)
 #endif
 
 /* Length, in byte, of a Node ID. */
 #define PA_NODE_ID_LEN 4
-#define PA_NODE_ID_L   "0x%08"PRIx32
-#define PA_NODE_ID_LA(node_id) *((uint32_t *)node_id)
 
 /* Advertised Prefix Priority type. */
 typedef uint8_t pa_priority;
@@ -59,7 +52,8 @@ typedef uint16_t pa_rule_priority;
  * The routine is never run synchronously, even when the delay is set to 0. */
 #define PA_RUN_DELAY 20
 
-/* Default flooding delay */
+/* Default flooding delay in milliseconds.
+ * Set when pa_core is initialized. */
 #define PA_DEFAULT_FLOODING_DELAY 10000
 
 
@@ -79,6 +73,9 @@ struct pa_core {
 	struct list_head rules;
 };
 
+/* Node ID print format and arguments. */
+#define PA_NODE_ID_P   "0x%08"PRIx32
+#define PA_NODE_ID_PA(node_id) *((uint32_t *)node_id)
 
 /* Initializes a pa_core structure.
  * Once initialized, it can be configured with rules, prefixes and links.
@@ -109,6 +106,10 @@ struct pa_link {
 	const char *name;     /* Name, displayed in logs. */
 };
 
+/* Link print format and arguments. */
+#define PA_LINK_P "%s"
+#define PA_LINK_PA(pa_link) (pa_link)->name?(pa_link)->name:"null"
+
 /* Adds and deletes a Link for prefix assignment */
 int pa_link_add(struct pa_core *, struct pa_link *);
 void pa_link_del(struct pa_link *);
@@ -122,6 +123,10 @@ struct pa_dp {
 	struct in6_addr prefix; /* The delegated prefix value. */
 	uint8_t plen;           /* The prefix length. */
 };
+
+/* Delegated Prefix print format and arguments */
+#define PA_DP_P "%s"
+#define PA_DP_PA(pa_dp) PREFIX_REPR(&(pa_dp)->prefix, (pa_dp)->plen)
 
 /* Adds and deletes a Delegated Prefix */
 int pa_dp_add(struct pa_core *, struct pa_dp *);
@@ -151,7 +156,7 @@ struct pa_ap {
 	uint8_t assigned  : 1;          /* There is an associated Assigned Prefix. */
 	uint8_t published : 1;          /* The AP is published. */
 	uint8_t applied   : 1;          /* The AP is applied. */
-	uint8_t adopted   : 1;          /* The AP will be adopted. */
+	uint8_t adopting  : 1;          /* The AP will be adopted (Only set during backoff). */
 	struct in6_addr prefix;         /* (if assigned) The AP prefix. */
 	uint8_t plen;                   /* (if assigned) The AP prefix length. */
 	pa_priority priority;           /* (if published) The Advertised Prefix Priority. */
@@ -161,6 +166,12 @@ struct pa_ap {
 	struct uloop_timeout backoff_to;/* Timer used to backoff prefix generation, adoption or apply. */
 	struct pa_pp *best_assignment;  /* (when in routine) The best current assignment. */
 };
+
+/* Assigned Prefix print format and arguments */
+#define PA_AP_P "%s%%"PA_LINK_P" from "PA_DP_P" flags (%s %s %s)"
+#define PA_AP_PA(pa_ap) ((pa_ap)->assigned)?PREFIX_REPR(&(pa_ap)->prefix, (pa_ap)->plen):"no-prefix", \
+	PA_LINK_PA((pa_ap)->link), PA_DP_PA((pa_ap)->dp), \
+	((pa_ap)->published)?"Published":"-", ((pa_ap)->applied)?"Applied":"-", ((pa_ap)->adopting)?"Adopting":"-"
 
 /*
  * Structure used to identify an Advertised Prefix.
@@ -173,6 +184,11 @@ struct pa_pp {
 	pa_priority priority;         /* The Advertised Prefix Priority. */
 	struct pa_link *link;         /* Advertised Prefix associated Shared Link (or null). */
 };
+
+/* Advertised Prefix print format and arguments */
+#define PA_PP_P "%s%%"PA_LINK_P"@"PA_NODE_ID_P":(%d)"
+#define PA_PP_PA(pa_pp) PREFIX_REPR(&(pa_pp)->prefix, (pa_pp)->plen), \
+	PA_LINK_PA((pa_pp)->link), PA_NODE_ID_PA((pa_pp)->node_id), (pa_pp)->priority
 
 /* Adds a new Advertised Prefix. */
 int pa_pp_add(struct pa_core *, struct pa_pp *);
@@ -201,6 +217,10 @@ struct pa_user {
 	void (*published)(struct pa_user *, struct pa_ap *);
 	void (*applied)(struct pa_user *, struct pa_ap *);
 };
+
+/* pa_user print format and argument */
+#define PA_USER_P "%p - %d:%d:%d"
+#define PA_USER_PA(pa_user) pa_user, (pa_user)->assigned, (pa_user)->published, (pa_user)->applied
 
 /* Adds a user which will receive events callback.
  * When added, the user does not receive callbacks for existing prefixes. */
@@ -240,6 +260,8 @@ struct pa_rule_prefix_count {
 struct pa_rule {
 	struct list_head le; /* Linked in pa_core, the Link, or the DP. */
 
+	const char *name; /* Rule name, displayed in logs. */
+
 	/* Called whenever a rule is evaluated for a given Link/DP pair.
 	 * Must return 0 when matching, a non-null value otherwise.
 	 * When matching, the pa_rule_arg argument must be filled. */
@@ -250,6 +272,10 @@ struct pa_rule {
 	pa_priority max_priority;
 	pa_priority max_override_priority;
 };
+
+/* pa_rule print format and argument */
+#define PA_RULE_P "%s(%p)"
+#define PA_RULE_PA(rule) (rule)->name?(rule)->name:"no-name", rule
 
 void pa_rule_add(struct pa_core *, struct pa_rule *);
 void pa_rule_del(struct pa_core *, struct pa_rule *);

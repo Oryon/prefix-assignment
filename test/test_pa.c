@@ -21,6 +21,20 @@ void pa_core_data() {
 	pa_link_add(&core, &l2);
 	pa_dp_add(&core, &d2);
 	pa_core_set_node_id(&core, (uint8_t *)&id1);
+	pa_core_set_node_id(&core, (uint8_t *)&id2);
+
+	pa_link_del(&l1);
+	pa_dp_del(&d1);
+
+	pa_link_add(&core, &l1);
+	pa_dp_add(&core, &d1);
+
+	pa_dp_del(&d1);
+	pa_link_del(&l1);
+	pa_dp_del(&d2);
+	pa_link_del(&l2);
+
+
 }
 
 int main(int argc, const char *argv[]) {
