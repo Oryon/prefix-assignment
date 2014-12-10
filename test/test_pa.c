@@ -3,7 +3,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "../src/pa_core.h"
+#include "fake_uloop.h"
+
+#include <stdio.h>
+#define PA_WARNING(format, ...) printf("PA Warning : "format"\n", ##__VA_ARGS__)
+#define PA_INFO(format, ...)    printf("PA Info    : "format"\n", ##__VA_ARGS__)
+#define PA_DEBUG(format, ...)   printf("PA Debug   : "format"\n", ##__VA_ARGS__)
+
+#include "../src/pa_core.c"
 
 void pa_core_data() {
 	struct pa_core core;
@@ -37,9 +44,12 @@ void pa_core_data() {
 
 }
 
-int main(int argc, const char *argv[]) {
-	uloop_init();
-	pa_core_data();
-
-	return 0;
+int main() {
+	fu_init();
+	sput_start_testing();
+	sput_enter_suite("Prefix assignment tests"); /* optional */
+	sput_run_test(pa_core_data);
+	sput_leave_suite(); /* optional */
+	sput_finish_testing();
+	return sput_get_return_value();
 }

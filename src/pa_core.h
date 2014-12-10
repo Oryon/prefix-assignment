@@ -27,14 +27,13 @@
  *    Global parameters.   *
  ***************************/
 
-#ifdef PA_STDOUT
-#include <stdio.h>
-#define PA_WARNING(format, ...) printf("PA Warning : "format"\n", ##__VA_ARGS__)
-#define PA_INFO(format, ...)    printf("PA Info    : "format"\n", ##__VA_ARGS__)
-#define PA_DEBUG(format, ...)   printf("PA Debug   : "format"\n", ##__VA_ARGS__)
-#else
+#ifndef PA_WARNING
 #define PA_WARNING(format, ...)
+#endif
+#ifndef PA_INFO
 #define PA_INFO(format, ...)
+#endif
+#ifndef PA_DEBUG
 #define PA_DEBUG(format, ...)
 #endif
 

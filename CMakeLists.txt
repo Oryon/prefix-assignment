@@ -5,8 +5,19 @@ project(pa C)
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g")
 
 add_definitions(-D_GNU_SOURCE -Wall -Wno-gnu -Wextra)
-add_definitions(-DPA_STDOUT)
 
-add_executable(test_pa src/pa_core.c src/btrie.c src/prefix.c test/test_pa.c)
+OPTION(COVERAGE "build with coverage" OFF)
+if (${COVERAGE})
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fprofile-arcs -ftest-coverage")
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fprofile-arcs -ftest-coverage")
+endif (${COVERAGE})
+
+add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND})
+enable_testing()
+include_directories(src)
+
+add_executable(test_pa src/btrie.c src/prefix.c test/test_pa.c)
 target_link_libraries(test_pa ubox)
+add_test(pa test_pa)
+add_dependencies(check test_pa)
 
