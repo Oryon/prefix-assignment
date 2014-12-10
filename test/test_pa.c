@@ -70,14 +70,14 @@ void pa_core_data() {
 	sput_fail_unless(core.flooding_delay == PA_DEFAULT_FLOODING_DELAY, "Default flooding delay");
 	sput_fail_if(memcmp(core.node_id, &id0, PA_NODE_ID_LEN), "Default Node ID");
 
-	pa_core_set_node_id(&core, (uint8_t *)&id1);
+	pa_core_set_node_id(&core, &id1);
 	pa_core_set_flooding_delay(&core, 20000);
 	pa_core_set_flooding_delay(&core, 5000);
 	sput_fail_if(pa_link_add(&core, &l1), "Add L1");
 	sput_fail_if(pa_dp_add(&core, &d1), "Add DP1");
 	sput_fail_if(pa_link_add(&core, &l2), "Add L2");
 	sput_fail_if(pa_dp_add(&core, &d2), "Add DP2");
-	pa_core_set_node_id(&core, (uint8_t *)&id2);
+	pa_core_set_node_id(&core, &id2);
 	pa_core_set_flooding_delay(&core, 10000);
 	pa_core_set_flooding_delay(&core, 5000);
 

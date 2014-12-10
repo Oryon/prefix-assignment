@@ -408,7 +408,7 @@ void pa_core_set_flooding_delay(struct pa_core *core, uint32_t flooding_delay)
 	core->flooding_delay = flooding_delay;
 }
 
-void pa_core_set_node_id(struct pa_core *core, const uint8_t node_id[])
+void pa_core_set_node_id(struct pa_core *core, const PA_NODE_ID_TYPE node_id[])
 {
 	PA_INFO("Set Node ID to "PA_NODE_ID_P, PA_NODE_ID_PA(node_id));
 	struct pa_link *link;

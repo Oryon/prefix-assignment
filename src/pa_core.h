@@ -24,8 +24,10 @@
 
 
 /***************************
- *    Global parameters.   *
+ * Configuration defaults  *
  ***************************/
+
+#include "pa_conf.h"
 
 #ifndef PA_WARNING
 #define PA_WARNING(format, ...)
@@ -37,41 +39,36 @@
 #define PA_DEBUG(format, ...)
 #endif
 
-/* Node ID byte length. */
-#define PA_NODE_ID_LEN 4
+#ifndef PA_NODE_ID_PA
+#ifdef PA_NODE_ID_P
+#undef PA_NODE_ID_P
+#endif
+#endif
 
-/* Node ID comparison function. */
-#include <string.h>
-#define PA_NODE_ID_CMP(id1, id2) memcmp(id1, id2, PA_NODE_ID_LEN)
+#ifndef PA_NODE_ID_P
+static const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
+	char n;
+	s[2*len] = '\0';
+	for(;len;len--) {
+		n = (ptr[len] & 0xf0) >> 4;
+		s[2*len - 2] = (n > 9)?('a'+(n-10)):('0'+n);
+		n = (ptr[len] & 0x0f);
+		s[2*len - 1] = (n > 9)?('a'+(n-10)):('0'+n);
+	}
+	return s;
+}
 
-/* Node ID print format and arguments. */
-#define PA_NODE_ID_P   "0x%08"PRIx32
-#define PA_NODE_ID_PA(node_id) *((uint32_t *)node_id)
+#define PA_NODE_ID_P   "[%s]"
+#define PA_NODE_ID_PA(node_id) pa_hex_dump((uint8_t *)node_id, sizeof(PA_NODE_ID_TYPE)*PA_NODE_ID_LEN, alloca(sizeof(PA_NODE_ID_TYPE)*PA_NODE_ID_LEN*2+1))
+#endif
 
-/* Advertised Prefix Priority type. */
-typedef uint8_t pa_priority;
-
-/* Internal rule priority type. */
-typedef uint16_t pa_rule_priority;
-
-/* Delay, in milliseconds, between the events triggering
- * the prefix assignment routine and the actual time it is run.
- * The routine is never run synchronously, even when the delay is set to 0. */
-#define PA_RUN_DELAY 20
-
-/* Default flooding delay in milliseconds.
- * Set when pa_core is initialized. */
+#ifndef PA_DEFAULT_FLOODING_DELAY
 #define PA_DEFAULT_FLOODING_DELAY 10000
+#endif
 
-/* There may be multiple 'users' using the structures.
- * struct pa_ap contains PA_AP_USERS void * pointers for users.
- * struct pa_dp and pa_link contains a pa_user_id field to identify the provider of the dp or link.
- * Each user must be given a unique pa_user_id.
- */
-#define PA_AP_USERS 2
-typedef uint8_t pa_user_id;
-
-
+#ifndef PA_RUN_DELAY
+#define PA_RUN_DELAY 20
+#endif
 
 /***************************
  *       Generic API       *
@@ -80,7 +77,7 @@ typedef uint8_t pa_user_id;
 /* Structure containing state specific to the overall algorithm. */
 struct pa_core {
 	struct btrie prefixes;           /* btrie containing all Assigned and Advertised Prefixes */
-	uint8_t node_id[PA_NODE_ID_LEN]; /* The Node ID of the local node. Initial value is 0. */
+	PA_NODE_ID_TYPE node_id[PA_NODE_ID_LEN]; /* The Node ID of the local node. Initial value is 0. */
 	uint32_t flooding_delay;         /* The Flooding Delay. Initial value is PA_DEFAULT_FLOODING_DELAY. */
 	struct list_head users;
 	struct list_head links;
@@ -97,7 +94,7 @@ void pa_core_init(struct pa_core *core);
 /* Sets the local node ID.
  * This operation run or schedule
  */
-void pa_core_set_node_id(struct pa_core *core, const uint8_t[PA_NODE_ID_LEN]);
+void pa_core_set_node_id(struct pa_core *core, const PA_NODE_ID_TYPE[PA_NODE_ID_LEN]);
 
 /* Sets the flooding delay to the specified value.
  * When the delay is increased, all running timers are increased by old_flooding_delay - new_flooding_delay
@@ -115,7 +112,9 @@ struct pa_link {
 	struct list_head le;  /* Linked in pa_core. */
 	struct list_head aps; /* List of Assigned Prefixes assigned to this Link. */
 	const char *name;     /* Name, displayed in logs. */
-	pa_user_id user_id;   /* Identifies the provider of the link. */
+#ifdef PA_USER_ID
+	PA_USER_ID user_id;   /* Identifies the provider of the link. */
+#endif
 };
 
 /* Link print format and arguments. */
@@ -134,7 +133,9 @@ struct pa_dp {
 	struct list_head aps;   /* List of Assigned Prefixes from that Delegated Prefix. */
 	struct in6_addr prefix; /* The delegated prefix value. */
 	uint8_t plen;           /* The prefix length. */
-	pa_user_id user_id;     /* Identifies the provider of the link. */
+#ifdef PA_USER_ID
+	PA_USER_ID user_id;     /* Identifies the provider of the link. */
+#endif
 };
 
 /* Delegated Prefix print format and arguments */
@@ -196,7 +197,7 @@ struct pa_ap {
  */
 struct pa_pp {
 	struct pa_pentry in_core;     /* Used to link aps and pps in the same btrie */
-	uint8_t node_id[PA_NODE_ID_LEN]; /* The node ID of the node advertising the prefix. */
+	PA_NODE_ID_TYPE node_id[PA_NODE_ID_LEN]; /* The node ID of the node advertising the prefix. */
 	struct in6_addr prefix;       /* The Advertised Prefix). */
 	uint8_t plen;                 /* The Advertised Prefix length. */
 	pa_priority priority;         /* The Advertised Prefix Priority. */
@@ -306,10 +307,5 @@ struct pa_rule {
 
 void pa_rule_add(struct pa_core *, struct pa_rule *);
 void pa_rule_del(struct pa_core *, struct pa_rule *);
-
-/* Allows a rule to access the prefix count array.
- * This must not be computed by rules individually in order to avoid
- * redundant computations. */
-const struct pa_rule_prefix_count *pa_rule_prefix_count(struct pa_core *, struct pa_rule_arg *);
 
 #endif /* PA_CORE_H_ */
