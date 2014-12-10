@@ -55,6 +55,14 @@ typedef uint16_t pa_rule_priority;
  * Set when pa_core is initialized. */
 #define PA_DEFAULT_FLOODING_DELAY 10000
 
+/* There may be multiple 'users' using the structures.
+ * struct pa_ap contains PA_AP_USERS void * pointers for users.
+ * struct pa_dp and pa_link contains a pa_user_id field to identify the provider of the dp or link.
+ * Each user must be given a unique pa_user_id.
+ */
+#define PA_AP_USERS 2
+typedef uint8_t pa_user_id;
+
 
 
 /***************************
@@ -103,6 +111,7 @@ struct pa_link {
 	struct list_head le;  /* Linked in pa_core. */
 	struct list_head aps; /* List of Assigned Prefixes assigned to this Link. */
 	const char *name;     /* Name, displayed in logs. */
+	pa_user_id user_id;   /* Identifies the provider of the link. */
 };
 
 /* Link print format and arguments. */
@@ -121,6 +130,7 @@ struct pa_dp {
 	struct list_head aps;   /* List of Assigned Prefixes from that Delegated Prefix. */
 	struct in6_addr prefix; /* The delegated prefix value. */
 	uint8_t plen;           /* The prefix length. */
+	pa_user_id user_id;     /* Identifies the provider of the link. */
 };
 
 /* Delegated Prefix print format and arguments */
@@ -164,6 +174,9 @@ struct pa_ap {
 	struct uloop_timeout routine_to;/* Timer used to schedule the routine. */
 	struct uloop_timeout backoff_to;/* Timer used to backoff prefix generation, adoption or apply. */
 	struct pa_pp *best_assignment;  /* (when in routine) The best current assignment. */
+#if PA_AP_USERS != 0
+	void *users[PA_AP_USERS];
+#endif
 };
 
 /* Assigned Prefix print format and arguments */
