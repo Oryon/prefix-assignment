@@ -61,6 +61,11 @@ static void pa_ap_unassign(struct pa_ap *ap)
 		return;
 
 	PA_INFO("Unassign prefix: "PA_AP_P, PA_AP_PA(ap));
+	pa_ap_set_applied(ap, false);
+	pa_ap_set_published(ap, false);
+	uloop_timeout_cancel(&ap->backoff_to);
+	ap->adopting = false;
+
 	btrie_remove(&ap->in_core.be);
 	ap->assigned = 0;
 	pa_user_notify(ap, applied); /* Tell users about that */
@@ -94,12 +99,92 @@ static int pa_ap_assign(struct pa_ap *ap, const struct in6_addr *prefix, uint8_t
 	return 0;
 }
 
+static bool pa_ap_global_valid(struct pa_ap *ap)
+{
+	/* There can't be any ap except the one which is checked.
+	 * If there are overlapping DPs, this assumption may be wrong and
+	 * this code would bug. */
+	struct pa_pp *pp;
+	btrie_for_each_updown_entry(pp, &ap->core->prefixes, (btrie_key_t *)&ap->prefix, ap->plen, in_core.be) {
+		if(&pp->in_core != &ap->in_core && pa_precedes(pp, ap))
+			return false;
+	}
+	return true;
+}
+
 /*
  * Prefix Assignment Routine.
  */
 static void pa_routine(struct pa_ap *ap, bool backoff)
 {
-	PA_DEBUG("Executing PA Routine %sfor "PA_AP_P, backoff?"with backoff ":"", PA_AP_PA(ap));
+	PA_DEBUG("Executing PA %sRoutine for"PA_AP_P, backoff?"backoff ":"", PA_AP_PA(ap));
+
+	/*
+	 * The algorithm is slightly modified in order to provide support for
+	 * custom behavior.
+	 * 1. The Best Assignment is fetched and checked.
+	 * 2. The validity of the Current Assignment is checked.
+	 * 3. Rules may be applied to create/adopt/delete assignments.
+	 * 4. The prefix is removed if still invalid, and the routine
+	 * is executed assuming existing assignment validity (That is, we assume
+	 * rules provide valid assignments).
+	 */
+
+	/* 1. Look for the Best Assignment */
+	struct pa_pp *pp;
+	struct pa_pentry *pentry;
+	ap->best_assignment = NULL;
+	btrie_for_each_updown_entry(pentry, &ap->core->prefixes, (btrie_key_t *)&ap->dp->prefix, ap->dp->plen, be) {
+		if(pentry->type == PAT_PP) {
+			pp = container_of(pentry, struct pa_pp, in_core);
+			if(pp->link == ap->link &&
+					(!ap->best_assignment || pp->priority > ap->best_assignment->priority ||
+					((pp->priority == ap->best_assignment->priority) && (PA_NODE_ID_CMP(pp->node_id, ap->best_assignment->node_id) > 0))))
+				ap->best_assignment = pp;
+		}
+	}
+
+	/* 2. Check assignment validity */
+	if(!ap->best_assignment || !pa_precedes(ap->best_assignment, ap))
+		ap->best_assignment = NULL; //We don't really care about invalid best assignments.
+
+	if(ap->assigned) { //Check whether the algorithm would keep that prefix or destroy it.
+		if(ap->best_assignment)
+			ap->valid = pa_ap_global_valid(ap); //Globally valid
+		else
+			ap->valid = prefix_equals(&ap->prefix, ap->plen, //Different from Best Assignment
+					&ap->best_assignment->prefix, ap->best_assignment->plen);
+	}
+
+	/* 3. Execute rules. */
+	//TODO:
+
+	/* 4. End the routine with no adoption or creation */
+	if(!ap->valid) {
+		pa_ap_unassign(ap);
+		uloop_timeout_cancel(&ap->backoff_to);
+	}
+
+	if(ap->assigned) {
+		//Assigned and valid
+
+		if(!ap->published && !ap->adopting) {
+			//It would require an adoption, which we don't do here.
+			pa_ap_unassign(ap);
+			uloop_timeout_cancel(&ap->backoff_to);
+		}
+
+		if(ap->best_assignment) {
+			//We give up the publishing to the other node.
+			pa_ap_set_published(ap, 0);
+		}
+
+	} else if (ap->best_assignment) {
+		//Should accept the best_assignment
+		pa_ap_unassign(ap);
+		pa_ap_assign(ap, &ap->best_assignment->prefix, ap->best_assignment->plen);
+		uloop_timeout_set(&ap->backoff_to, 2 * ap->core->flooding_delay);
+	}
 }
 
 static void pa_backoff_to(struct uloop_timeout *to)

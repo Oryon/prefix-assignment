@@ -37,8 +37,16 @@
 #define PA_DEBUG(format, ...)
 #endif
 
-/* Length, in byte, of a Node ID. */
+/* Node ID byte length. */
 #define PA_NODE_ID_LEN 4
+
+/* Node ID comparison function. */
+#include <string.h>
+#define PA_NODE_ID_CMP(id1, id2) memcmp(id1, id2, PA_NODE_ID_LEN)
+
+/* Node ID print format and arguments. */
+#define PA_NODE_ID_P   "0x%08"PRIx32
+#define PA_NODE_ID_PA(node_id) *((uint32_t *)node_id)
 
 /* Advertised Prefix Priority type. */
 typedef uint8_t pa_priority;
@@ -79,10 +87,6 @@ struct pa_core {
 	struct list_head dps;
 	struct list_head rules;
 };
-
-/* Node ID print format and arguments. */
-#define PA_NODE_ID_P   "0x%08"PRIx32
-#define PA_NODE_ID_PA(node_id) *((uint32_t *)node_id)
 
 /* Initializes a pa_core structure.
  * Once initialized, it can be configured with rules, prefixes and links.
@@ -166,6 +170,8 @@ struct pa_ap {
 	uint8_t published : 1;          /* The AP is published. */
 	uint8_t applied   : 1;          /* The AP is applied. */
 	uint8_t adopting  : 1;          /* The AP will be adopted (Only set during backoff). */
+	uint8_t valid     : 1;          /* (if assigned, in routine) Whether the routine will destroy the AP. */
+	uint8_t backoff   : 1;          /* (in routine) The routine is executed following backoff timeout. */
 	struct in6_addr prefix;         /* (if assigned) The AP prefix. */
 	uint8_t plen;                   /* (if assigned) The AP prefix length. */
 	pa_priority priority;           /* (if published) The Advertised Prefix Priority. */
@@ -173,7 +179,7 @@ struct pa_ap {
 	struct pa_rule *rule;           /* (if published) The rule used to publish this prefix. */
 	struct uloop_timeout routine_to;/* Timer used to schedule the routine. */
 	struct uloop_timeout backoff_to;/* Timer used to backoff prefix generation, adoption or apply. */
-	struct pa_pp *best_assignment;  /* (when in routine) The best current assignment. */
+	struct pa_pp *best_assignment;  /* (in routine) The best current assignment. */
 #if PA_AP_USERS != 0
 	void *users[PA_AP_USERS];
 #endif
@@ -254,17 +260,18 @@ struct pa_user {
  *   Configuration API     *
  ***************************/
 
-/* Argument passed to a rule. */
-struct pa_rule_arg {
-	/* The action to be done. */
-	uint8_t action; //DESTROY, KEEP, CHANGE
-	uint32_t backoff_timer;
-	uint32_t apply_timer;
-};
-
-/* */
-struct pa_rule_prefix_count {
-
+/* Result of the rule callback function.
+ * Tells the algorithm what the rule wants to do.
+ * Returning PA_RULE_CREATE does not mean a prefix may be found.
+ * If PA_RULE_CREATE is returned, get_prefix function may be called
+ * later to select a prefix.
+ * This two-steps approach intends to avoid useless computations. */
+enum pa_rule_target {
+	PA_RULE_NO_MATCH, /* The rule does not match. */
+	PA_RULE_CREATE,   /* The rule would like to create a new prefix,
+	 	 	 	 	 	 get_prefix is called later to get, maybe, an available prefix. */
+	PA_RULE_ADOPT,    /* The rule wants to adopt the Current Prefix. */
+	PA_RULE_DESTROY   /* The rule wants to destroy the Current Prefix. */
 };
 
 /* This structure is a raw structure for prefix selection.
@@ -274,15 +281,23 @@ struct pa_rule {
 
 	const char *name; /* Rule name, displayed in logs. */
 
-	/* Called whenever a rule is evaluated for a given Link/DP pair.
-	 * Must return 0 when matching, a non-null value otherwise.
-	 * When matching, the pa_rule_arg argument must be filled. */
-	int (*apply_rule)(struct pa_rule *, struct pa_ap *, struct pa_rule_arg *);
+	/* See if a rule matches.
+	 * If PA_RULE_ADOPT or PA_RULE_DESTROY are returned,
+	 * the rule_priority pointer must be set to the priority
+	 * used by the rule.
+	 */
+	enum pa_rule_target (*match)(struct pa_rule *, struct pa_ap *,
+			pa_rule_priority *rule_priority);
 
-	pa_rule_priority max_rule_priority;
-	pa_rule_priority max_rule_override_priority;
-	pa_priority max_priority;
-	pa_priority max_override_priority;
+	/* When match returned PA_RULE_CREATE, this function may be called afterward.
+	 * best_rule_priority indicates the best other matching rule found
+	 * until now.
+	 * prefix, plen and priority must be set to the values
+	 * to be used by the algorithm for the new assignment. */
+	int (*get_prefix)(struct pa_rule *, struct pa_ap *,
+			pa_rule_priority best_rule_priority,
+			pa_rule_priority *rule_priority,
+			struct in6_addr *prefix, uint8_t *plen, pa_priority *priority);
 };
 
 /* pa_rule print format and argument */

@@ -52,14 +52,15 @@ static struct pa_pp
 		pp1 = {.plen = 56, .prefix = {{{0x20, 0x01, 0, 0, 0, 0, 0x01, 0x01}}}},
 		pp2 = {.plen = 56, .prefix = {{{0x20, 0x01, 0, 0, 0, 0, 0x01, 0x01}}}};
 
-static int no_match_rule_f(struct pa_rule *rule, struct pa_ap *ap, struct pa_rule_arg *arg)
+enum pa_rule_target no_match_rule_f(struct pa_rule *rule, struct pa_ap *ap,
+			pa_rule_priority *rule_priority)
 {
-	return -1;
+	return PA_RULE_NO_MATCH;
 }
 
 static struct pa_rule
-		no_match_rule1 = {.name = "Do Nothing 1", .apply_rule = no_match_rule_f},
-		no_match_rule2 = {.name = "Do Nothing 2", .apply_rule = no_match_rule_f};
+		no_match_rule1 = {.name = "Do Nothing 1", .match = no_match_rule_f},
+		no_match_rule2 = {.name = "Do Nothing 2", .match = no_match_rule_f};
 
 
 void pa_core_data() {
