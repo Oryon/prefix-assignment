@@ -9,3 +9,5 @@ test_pa
 CTestTestfile.cmake
 coverage.info
 *~
+Testing
+coverage
