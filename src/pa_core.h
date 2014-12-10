@@ -273,7 +273,7 @@ struct pa_rule {
 };
 
 /* pa_rule print format and argument */
-#define PA_RULE_P "%s(%p)"
+#define PA_RULE_P "'%s'@%p"
 #define PA_RULE_PA(rule) (rule)->name?(rule)->name:"no-name", rule
 
 void pa_rule_add(struct pa_core *, struct pa_rule *);

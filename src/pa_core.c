@@ -57,10 +57,9 @@
 static void pa_ap_unassign(struct pa_ap *ap)
 {
 	struct pa_ap *ap2;
-	if(!ap->assigned) {
-		PA_WARNING("Could not unassign prefix: "PA_AP_P, PA_AP_PA(ap));
+	if(!ap->assigned)
 		return;
-	}
+
 	PA_INFO("Unassign prefix: "PA_AP_P, PA_AP_PA(ap));
 	btrie_remove(&ap->in_core.be);
 	ap->assigned = 0;
@@ -185,6 +184,7 @@ int pa_dp_add(struct pa_core *core, struct pa_dp *dp)
 {
 	PA_INFO("Adding Delegated Prefix "PA_DP_P, PA_DP_PA(dp));
 	INIT_LIST_HEAD(&dp->aps);
+	list_add(&dp->le, &core->dps);
 	struct pa_link *link;
 	pa_for_each_link(core, link) {
 		if(pa_ap_create(core, link, dp)) {
@@ -193,7 +193,6 @@ int pa_dp_add(struct pa_core *core, struct pa_dp *dp)
 			return -1;
 		}
 	}
-	list_add(&dp->le, &core->dps);
 	return 0;
 }
 
@@ -224,6 +223,7 @@ int pa_link_add(struct pa_core *core, struct pa_link *link)
 {
 	PA_INFO("Adding Link "PA_LINK_P, PA_LINK_PA(link));
 	INIT_LIST_HEAD(&link->aps);
+	list_add(&link->le, &core->links);
 	struct pa_dp *dp;
 	pa_for_each_dp(core, dp) {
 		if(pa_ap_create(core, link, dp)) {
@@ -232,7 +232,6 @@ int pa_link_add(struct pa_core *core, struct pa_link *link)
 			return -1;
 		}
 	}
-	list_add(&link->le, &core->links);
 	return 0;
 }
 
