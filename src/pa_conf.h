@@ -77,18 +77,25 @@ typedef uint16_t pa_rule_priority;
  *   (Optional - Default to 20) */
 #define PA_RUN_DELAY 20
 
-/* The pa_ap structure contains PA_AP_USERS
+/* The pa_ldp structure contains PA_LDP_USERS
  * void * pointers, to be used by users for
  * storing private data.
  *    (Optional) */
-#define PA_AP_USERS 2
+#define PA_LDP_USERS 2
 
-/* pa_link and pa_dp structures contain a
- * pa_user_id field to identify a user owning
- * the structure.
+/* The Link structure is provided by user(s).
+ * When contained in different larger struct,
+ * it may be useful to identify the type of
+ * struct it is included in.
  *    (Optional) */
-#define PA_USER_ID uint8_t
+#define PA_LINK_TYPE
 
+/* The Delegated Prefix structure is provided
+ * by user(s). When contained in different larger
+ * struct, it may be useful to identify the
+ * type of struct it is included in.
+ *    (Optional) */
+#define PA_DP_TYPE
 
 
 #endif /* PA_CONF_H_ */

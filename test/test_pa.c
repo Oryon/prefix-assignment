@@ -48,11 +48,11 @@ static uint32_t id0 = 0,
 		id2 = 0x222222,
 		id3 = 0x333333;
 
-static struct pa_pp
-		pp1 = {.plen = 56, .prefix = {{{0x20, 0x01, 0, 0, 0, 0, 0x01, 0x01}}}},
-		pp2 = {.plen = 56, .prefix = {{{0x20, 0x01, 0, 0, 0, 0, 0x01, 0x01}}}};
+static struct pa_advp
+		advp1 = {.plen = 56, .prefix = {{{0x20, 0x01, 0, 0, 0, 0, 0x01, 0x01}}}},
+		advp2 = {.plen = 56, .prefix = {{{0x20, 0x01, 0, 0, 0, 0, 0x01, 0x01}}}};
 
-enum pa_rule_target no_match_rule_f(struct pa_rule *rule, struct pa_ap *ap,
+enum pa_rule_target no_match_rule_f(struct pa_rule *rule, struct pa_ldp *ldp,
 			pa_rule_priority *rule_priority)
 {
 	return PA_RULE_NO_MATCH;
@@ -88,24 +88,24 @@ void pa_core_data() {
 	sput_fail_if(pa_dp_add(&core, &d1), "Add DP1");
 
 	/* Test adding PPs */
-	pp1.link = &l1;
-	memcpy(pp1.node_id, &id1, PA_NODE_ID_LEN);
+	advp1.link = &l1;
+	memcpy(advp1.node_id, &id1, PA_NODE_ID_LEN);
 
-	pp2.link = &l2;
-	memcpy(pp2.node_id, &id3, PA_NODE_ID_LEN);
+	advp2.link = &l2;
+	memcpy(advp2.node_id, &id3, PA_NODE_ID_LEN);
 	btrie_fail = true;
-	sput_fail_unless(pa_pp_add(&core, &pp1), "Can't add pp1");
+	sput_fail_unless(pa_advp_add(&core, &advp1), "Can't add advp1");
 	btrie_fail = false;
-	sput_fail_if(pa_pp_add(&core, &pp1), "Add pp1");
+	sput_fail_if(pa_advp_add(&core, &advp1), "Add advp1");
 	btrie_fail = true;
-	sput_fail_unless(pa_pp_add(&core, &pp2), "Can't add pp2");
+	sput_fail_unless(pa_advp_add(&core, &advp2), "Can't add advp2");
 	btrie_fail = false;
-	sput_fail_if(pa_pp_add(&core, &pp2), "Add pp2");
+	sput_fail_if(pa_advp_add(&core, &advp2), "Add advp2");
 
-	pa_pp_update(&core, &pp1);
-	pa_pp_update(&core, &pp2);
-	pa_pp_del(&core, &pp1);
-	pa_pp_del(&core, &pp2);
+	pa_advp_update(&core, &advp1);
+	pa_advp_update(&core, &advp2);
+	pa_advp_del(&core, &advp1);
+	pa_advp_del(&core, &advp2);
 
 	/* Adding rules */
 	pa_rule_add(&core, &no_match_rule1);

@@ -110,10 +110,10 @@ void pa_core_set_flooding_delay(struct pa_core *core, uint32_t flooding_delay);
  */
 struct pa_link {
 	struct list_head le;  /* Linked in pa_core. */
-	struct list_head aps; /* List of Assigned Prefixes assigned to this Link. */
+	struct list_head ldps;/* List of Link/DP pairs associated with this Link. */
 	const char *name;     /* Name, displayed in logs. */
-#ifdef PA_USER_ID
-	PA_USER_ID user_id;   /* Identifies the provider of the link. */
+#ifdef PA_LINK_TYPE
+	uint8_t type;           /* Link type identifier provided by user. */
 #endif
 };
 
@@ -130,11 +130,11 @@ void pa_link_del(struct pa_link *);
  */
 struct pa_dp {
 	struct list_head le;    /* Linked in pa_core. */
-	struct list_head aps;   /* List of Assigned Prefixes from that Delegated Prefix. */
+	struct list_head ldps;  /* List of Link/DP pairs associated with this Delegated Prefix. */
 	struct in6_addr prefix; /* The delegated prefix value. */
 	uint8_t plen;           /* The prefix length. */
-#ifdef PA_USER_ID
-	PA_USER_ID user_id;     /* Identifies the provider of the link. */
+#ifdef PA_DP_TYPE
+	uint8_t type;           /* Delegated Prefix type identifier provided by user. */
 #endif
 };
 
@@ -152,51 +152,51 @@ void pa_dp_del(struct pa_dp *);
 struct pa_pentry {
 	struct btrie_element be; /* The btrie element. */
 	uint8_t type;            /* Prefix type. */
-#define PAT_AP 0x01
-#define PAT_PP 0x02
+#define PAT_ASSIGNED   0x01
+#define PAT_ADVERTISED 0x02
 };
 
 /*
  * Structure used to identify a Link/Delegated Prefix pair.
  * It may or may not contain an Assigned Prefix.
  */
-struct pa_ap {
-	struct pa_pentry in_core;       /* Used to link aps and pps in the same btrie */
-	struct list_head in_link;       /* Linked in the link structure. */
+struct pa_ldp {
+	struct pa_pentry in_core;       /* Used to link Assigned and Advertised Prefixes in the same btrie */
+	struct list_head in_link;       /* Linked in the Link structure. */
 	struct list_head in_dp;         /* Linked in the Delegated Prefix structure. */
-	struct pa_link *link;           /* The Link associated with the AP. */
-	struct pa_dp *dp;               /* The DP associated with the AP. */
+	struct pa_link *link;           /* The Link. */
+	struct pa_dp *dp;               /* The Delegated Prefix. */
 	struct pa_core *core;           /* Back-pointer to the associated pa_core struct */
 	uint8_t assigned  : 1;          /* There is an associated Assigned Prefix. */
-	uint8_t published : 1;          /* The AP is published. */
-	uint8_t applied   : 1;          /* The AP is applied. */
-	uint8_t adopting  : 1;          /* The AP will be adopted (Only set during backoff). */
-	uint8_t valid     : 1;          /* (if assigned, in routine) Whether the routine will destroy the AP. */
+	uint8_t published : 1;          /* The Assigned Prefix is published. */
+	uint8_t applied   : 1;          /* The Assigned Prefix is applied. */
+	uint8_t adopting  : 1;          /* The Assigned Prefix will be adopted (Only set during backoff). */
+	uint8_t valid     : 1;          /* (in routine) Whether the routine will destroy the Assigned Prefix. */
 	uint8_t backoff   : 1;          /* (in routine) The routine is executed following backoff timeout. */
-	struct in6_addr prefix;         /* (if assigned) The AP prefix. */
-	uint8_t plen;                   /* (if assigned) The AP prefix length. */
+	struct in6_addr prefix;         /* (if assigned) The Assigned Prefix. */
+	uint8_t plen;                   /* (if assigned) The Assigned Prefix length. */
 	pa_priority priority;           /* (if published) The Advertised Prefix Priority. */
 	pa_rule_priority rule_priority; /* (if published) The internal rule priority. */
 	struct pa_rule *rule;           /* (if published) The rule used to publish this prefix. */
 	struct uloop_timeout routine_to;/* Timer used to schedule the routine. */
 	struct uloop_timeout backoff_to;/* Timer used to backoff prefix generation, adoption or apply. */
-	struct pa_pp *best_assignment;  /* (in routine) The best current assignment. */
-#if PA_AP_USERS != 0
-	void *users[PA_AP_USERS];
+	struct pa_advp *best_assignment;/* (in routine) Best on-link assognment, ours included. */
+#if PA_LDP_USERS != 0
+	void *userdata[PA_LDP_USERS];   /* Generic pointers, initialized to NULL, for use by users. */
 #endif
 };
 
 /* Assigned Prefix print format and arguments */
-#define PA_AP_P "%s%%"PA_LINK_P" from "PA_DP_P" flags (%s %s %s)"
-#define PA_AP_PA(pa_ap) ((pa_ap)->assigned)?PREFIX_REPR(&(pa_ap)->prefix, (pa_ap)->plen):"no-prefix", \
-	PA_LINK_PA((pa_ap)->link), PA_DP_PA((pa_ap)->dp), \
-	((pa_ap)->published)?"Published":"-", ((pa_ap)->applied)?"Applied":"-", ((pa_ap)->adopting)?"Adopting":"-"
+#define PA_LDP_P "%s%%"PA_LINK_P" from "PA_DP_P" flags (%s %s %s)"
+#define PA_LDP_PA(pa_ldp) ((pa_ldp)->assigned)?PREFIX_REPR(&(pa_ldp)->prefix, (pa_ldp)->plen):"no-prefix", \
+	PA_LINK_PA((pa_ldp)->link), PA_DP_PA((pa_ldp)->dp), \
+	((pa_ldp)->published)?"Published":"-", ((pa_ldp)->applied)?"Applied":"-", ((pa_ldp)->adopting)?"Adopting":"-"
 
 /*
  * Structure used to identify an Advertised Prefix.
  */
-struct pa_pp {
-	struct pa_pentry in_core;     /* Used to link aps and pps in the same btrie */
+struct pa_advp {
+	struct pa_pentry in_core;     /* Used to link Assigned and Advertised Prefixes in the same btrie */
 	PA_NODE_ID_TYPE node_id[PA_NODE_ID_LEN]; /* The node ID of the node advertising the prefix. */
 	struct in6_addr prefix;       /* The Advertised Prefix). */
 	uint8_t plen;                 /* The Advertised Prefix length. */
@@ -205,18 +205,18 @@ struct pa_pp {
 };
 
 /* Advertised Prefix print format and arguments */
-#define PA_PP_P "%s%%"PA_LINK_P"@"PA_NODE_ID_P":(%d)"
-#define PA_PP_PA(pa_pp) PREFIX_REPR(&(pa_pp)->prefix, (pa_pp)->plen), \
-	PA_LINK_PA((pa_pp)->link), PA_NODE_ID_PA((pa_pp)->node_id), (pa_pp)->priority
+#define PA_ADVP_P "%s%%"PA_LINK_P"@"PA_NODE_ID_P":(%d)"
+#define PA_ADVP_PA(pa_advp) PREFIX_REPR(&(pa_advp)->prefix, (pa_advp)->plen), \
+	PA_LINK_PA((pa_advp)->link), PA_NODE_ID_PA((pa_advp)->node_id), (pa_advp)->priority
 
 /* Adds a new Advertised Prefix. */
-int pa_pp_add(struct pa_core *, struct pa_pp *);
+int pa_advp_add(struct pa_core *, struct pa_advp *);
 
-/* Removes an added Advertised Prefix. */
-void pa_pp_del(struct pa_core *, struct pa_pp *);
+/* Removes an Advertised Prefix which was previously added. */
+void pa_advp_del(struct pa_core *, struct pa_advp *);
 
-/* Tell the content of the Advertised Prefix was changes. */
-void pa_pp_update(struct pa_core *, struct pa_pp *);
+/* Notify that the content of the Advertised Prefix was changes. */
+void pa_advp_update(struct pa_core *, struct pa_advp *);
 
 
 /***************************
@@ -232,9 +232,9 @@ struct pa_user {
 	 * When switched to 0, associated values are still present.
 	 * i.e. the prefix and plen are valid when assigned == 0
 	 * i.e. the priorities and rule are still valid when published == 0 */
-	void (*assigned)(struct pa_user *, struct pa_ap *);
-	void (*published)(struct pa_user *, struct pa_ap *);
-	void (*applied)(struct pa_user *, struct pa_ap *);
+	void (*assigned)(struct pa_user *, struct pa_ldp *);
+	void (*published)(struct pa_user *, struct pa_ldp *);
+	void (*applied)(struct pa_user *, struct pa_ldp *);
 };
 
 /* pa_user print format and argument */
@@ -250,11 +250,11 @@ struct pa_user {
 
 #define pa_for_each_link(pa_core, pa_link) list_for_each_entry(pa_link, &(pa_core)->links, le)
 
-#define pa_for_each_ap_in_link(pa_link, pa_ap) list_for_each_entry(pa_ap, &(pa_link)->aps, in_link)
+#define pa_for_each_ldp_in_link(pa_link, pa_ldp) list_for_each_entry(pa_ldp, &(pa_link)->ldps, in_link)
 
 #define pa_for_each_dp(pa_core, pa_dp) list_for_each_entry(pa_dp, &(pa_core)->dps, le)
 
-#define pa_for_each_ap_in_dp(pa_dp, pa_ap) list_for_each_entry(pa_ap, &(pa_dp)->aps, in_dp)
+#define pa_for_each_ldp_in_dp(pa_dp, pa_ldp) list_for_each_entry(pa_ldp, &(pa_dp)->ldps, in_dp)
 
 
 /***************************
@@ -287,7 +287,7 @@ struct pa_rule {
 	 * the rule_priority pointer must be set to the priority
 	 * used by the rule.
 	 */
-	enum pa_rule_target (*match)(struct pa_rule *, struct pa_ap *,
+	enum pa_rule_target (*match)(struct pa_rule *, struct pa_ldp *,
 			pa_rule_priority *rule_priority);
 
 	/* When match returned PA_RULE_CREATE, this function may be called afterward.
@@ -295,7 +295,7 @@ struct pa_rule {
 	 * until now.
 	 * prefix, plen and priority must be set to the values
 	 * to be used by the algorithm for the new assignment. */
-	int (*get_prefix)(struct pa_rule *, struct pa_ap *,
+	int (*get_prefix)(struct pa_rule *, struct pa_ldp *,
 			pa_rule_priority best_rule_priority,
 			pa_rule_priority *rule_priority,
 			struct in6_addr *prefix, uint8_t *plen, pa_priority *priority);
