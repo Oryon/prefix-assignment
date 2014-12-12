@@ -66,6 +66,11 @@ typedef uint8_t pa_priority;
  **********************************/
 
 /* Internal rule priority type.
+ * The value ZERO is reserved.
+ * The higher the value, the higher the rule priority.
+ * When a rule is removed, all Assigned Prefixes which
+ * were published by the rule are unpublished and left
+ * for adoption to other rules.
  *   (Mandatory) */
 typedef uint16_t pa_rule_priority;
 

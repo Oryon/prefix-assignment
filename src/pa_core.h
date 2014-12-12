@@ -261,44 +261,93 @@ struct pa_user {
  *   Configuration API     *
  ***************************/
 
-/* Result of the rule callback function.
- * Tells the algorithm what the rule wants to do.
- * Returning PA_RULE_CREATE does not mean a prefix may be found.
- * If PA_RULE_CREATE is returned, get_prefix function may be called
- * later to select a prefix.
- * This two-steps approach intends to avoid useless computations. */
+/* This API is an advanced rule-based configuration API.
+ *
+ * ! Warning !
+ * Rules are supposed to behave in conformance with the prefix assignment algorithm specifications.
+ * One should understand the algorithm behavior before trying to implement a rule.
+ * pa_core does not check for rules well-behavior. An incorrect rule may result in faults.
+ * Specific, more user-friendly rules are defined in pa_rules.h. */
+
+/* The rule target indicates the desired behavior of a rule on a given ldp. */
 enum pa_rule_target {
-	PA_RULE_NO_MATCH, /* The rule does not match. */
-	PA_RULE_CREATE,   /* The rule would like to create a new prefix,
-	 	 	 	 	 	 get_prefix is called later to get, maybe, an available prefix. */
-	PA_RULE_ADOPT,    /* The rule wants to adopt the Current Prefix. */
-	PA_RULE_DESTROY   /* The rule wants to destroy the Current Prefix. */
+	PA_RULE_NO_MATCH = 0, /* The rule does not match.  */
+
+	PA_RULE_ADOPT,        /* The rule desires to adopt the orphan prefix. */
+
+	PA_RULE_BACKOFF,      /* The rule desires to make an assignment later. */
+
+	PA_RULE_PUBLISH,      /* The rule desires to assign and publish a prefix. */
+
+	PA_RULE_DESTROY,      /* The rule desires to unassign the prefix. */
+};
+
+/* The argument given to rule's match function in order to get
+ * more information about the desired behavior. */
+struct pa_rule_arg {
+	/* The rule priority indicates with which priority the action
+	 * must be applied. The decision will be kept and will not be overriden
+	 * unless with an higher priority. */
+	pa_rule_priority rule_priority;
+
+	/* These must be filled by the match function when it returns PA_RULE_PUBLISH.
+	 * It indicates which prefix to publish. */
+	struct in6_addr prefix;
+	uint8_t plen;
+
+	/* The pa priority must be specified by the match function when it returns
+	 * PA_RULE_PUBLISH or PA_RULE_ADOPT. It is the priority with which the prefix
+	 * will be advertised.
+	 */
+	pa_priority priority;
 };
 
 /* This structure is a raw structure for prefix selection.
- * Specific rules and API are defined in pa_rules.h. */
+ *  */
 struct pa_rule {
 	struct list_head le; /* Linked in pa_core, the Link, or the DP. */
 
 	const char *name; /* Rule name, displayed in logs. */
 
-	/* See if a rule matches.
-	 * If PA_RULE_ADOPT or PA_RULE_DESTROY are returned,
-	 * the rule_priority pointer must be set to the priority
-	 * used by the rule.
+	/*** get_priority ***
+	 * Returns the maximal rule priority the rule may use when
+	 * 'match' is called with the same pa_ldp. It is
+	 * used to determine the order rules 'match' functions
+	 * will be called later. If not specified, the max_priority
+	 * value is used instead.
+	 *
+	 * The special value 0 is returned when the rule cannot match.
+	 * In such case, or when the returned max_priority is
+	 * smaller than another matching rule, 'match' will not be called.
+	 *
+	 * In Arguments:
+	 * pa_rule: The rule from which the function is called.
+	 * pa_ldp:  The considered Link/DP pair.
+	 *
 	 */
-	enum pa_rule_target (*match)(struct pa_rule *, struct pa_ldp *,
-			pa_rule_priority *rule_priority);
+	pa_rule_priority (*get_max_priority)(struct pa_rule *, struct pa_ldp *);
 
-	/* When match returned PA_RULE_CREATE, this function may be called afterward.
-	 * best_rule_priority indicates the best other matching rule found
-	 * until now.
-	 * prefix, plen and priority must be set to the values
-	 * to be used by the algorithm for the new assignment. */
-	int (*get_prefix)(struct pa_rule *, struct pa_ldp *,
-			pa_rule_priority best_rule_priority,
-			pa_rule_priority *rule_priority,
-			struct in6_addr *prefix, uint8_t *plen, pa_priority *priority);
+	/* If get_max_priority is NULL, this value is used instead. */
+	pa_rule_priority max_priority;
+
+	/*** match ***
+	 * Returns the target specified by the rule.
+	 *
+	 * pa_rule: The rule from which the function is called.
+	 * pa_ldp:  The considered Link/DP pair.
+	 * best_match_priority: The priority of the preferred matching rule.
+	 *      'match' shall only match when returning an higher rule priority.
+	 * pa_arg:  Arguments to be filled by the function.
+	 *
+	 *
+	 */
+	 enum pa_rule_target (*match)(struct pa_rule *, struct pa_ldp *,
+			pa_rule_priority best_match_priority,
+			struct pa_rule_arg *pa_arg);
+
+	 /* PRIVATE - Used by pa_core. */
+	 pa_rule_priority _max_priority;
+	 struct list_head _le;
 };
 
 /* pa_rule print format and argument */

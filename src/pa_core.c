@@ -54,6 +54,9 @@
 	if(!(ldp)->routine_to.pending) \
 		uloop_timeout_set(&(ldp)->routine_to, PA_RUN_DELAY); }while(0)
 
+#define PA_ADOPT_DELAY(ldp)   3  //TODO
+#define PA_BACKOFF_DELAY(ldp) 10 //TODO
+
 static void pa_ldp_unassign(struct pa_ldp *ldp)
 {
 	struct pa_ldp *ldp2;
@@ -61,10 +64,10 @@ static void pa_ldp_unassign(struct pa_ldp *ldp)
 		return;
 
 	PA_INFO("Unassign prefix: "PA_LDP_P, PA_LDP_PA(ldp));
-	pa_ldp_set_applied(ldp, false);
-	pa_ldp_set_published(ldp, false);
+	pa_ldp_set_applied(ldp, 0);
+	pa_ldp_set_published(ldp, 0);
 	uloop_timeout_cancel(&ldp->backoff_to);
-	ldp->adopting = false;
+	ldp->adopting = 0;
 
 	btrie_remove(&ldp->in_core.be);
 	ldp->assigned = 0;
@@ -149,21 +152,124 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 		ldp->best_assignment = NULL; //We don't really care about invalid best assignments.
 
 	if(ldp->assigned) { //Check whether the algorithm would keep that prefix or destroy it.
-		if(ldp->best_assignment)
+		if(!ldp->best_assignment) {
 			ldp->valid = pa_ldp_global_valid(ldp); //Globally valid
-		else
+		} else {
 			ldp->valid = prefix_equals(&ldp->prefix, ldp->plen, //Different from Best Assignment
 					&ldp->best_assignment->prefix, ldp->best_assignment->plen);
+		}
 	}
 
-	/* 3. Execute rules. */
-	//TODO:
-
-	/* 4. End the routine with no adoption or creation */
-	if(!ldp->valid) {
-		pa_ldp_unassign(ldp);
+	if(ldp->best_assignment) {
+		/* If there is a best assignment, we can't neither
+		   Adopt nor delay prefix assignment anymore. */
+		ldp->adopting = 0;
 		uloop_timeout_cancel(&ldp->backoff_to);
 	}
+
+	/*********************
+	 * 3. Execute rules. *
+	 *********************/
+
+	struct pa_rule *rule, *r2;
+	struct list_head rules, *insert;
+	INIT_LIST_HEAD(&rules);
+
+	/* First, sort the rules with their max priority. */
+	list_for_each_entry(rule, &ldp->core->rules, le) {
+		rule->_max_priority = rule->get_max_priority?
+				rule->get_max_priority(rule, ldp):rule->max_priority;
+
+		if(!rule->_max_priority)
+			continue;
+
+		/* Insert the rule in descending order. */
+		insert = &rules;
+		list_for_each_entry(r2, &rules, _le) {
+			if(r2->_max_priority < rule->_max_priority)
+				break;
+			insert = &r2->_le;
+		}
+		list_add(&rule->_le, insert);
+	}
+
+	/* Now get the best rule result. */
+	enum pa_rule_target target,
+				best_target = PA_RULE_NO_MATCH;
+	pa_rule_priority best_prio = 0;
+	struct pa_rule_arg arg, best_arg;
+	struct pa_rule *best_rule;
+
+	if(ldp->assigned && (ldp->published || ldp->adopting) && ldp->valid)
+		best_prio = ldp->rule_priority;
+
+
+	list_for_each_entry(rule, &rules, _le) {
+		if(rule->_max_priority <= best_prio) //As it is a sorted list
+			break;
+
+		/* For now, we assume rules behave correctly.
+		 * They only return a match when they have the best
+		 * priority, and everything they say is valid.
+		 */
+		if(!rule->match || !(target = rule->match(rule, ldp, best_prio, &arg)))
+				continue;
+
+
+		best_arg = arg;
+		best_target = target;
+		best_prio = arg.rule_priority;
+		best_rule = rule;
+	}
+
+	/* Now act upon the best rule */
+	switch (best_target) {
+		case PA_RULE_ADOPT:
+			if(!ldp->adopting) {
+				//Only start adoption if not started yet.
+				ldp->adopting = 1;
+				uloop_timeout_set(&ldp->backoff_to, PA_ADOPT_DELAY(ldp));
+			}
+			break;
+		case PA_RULE_BACKOFF:
+			if(!ldp->backoff_to.pending) {
+				//If already pending, we can keep waiting.
+				uloop_timeout_set(&ldp->backoff_to, PA_BACKOFF_DELAY(ldp));
+			}
+			break;
+		case PA_RULE_DESTROY:
+			pa_ldp_unassign(ldp);
+			break;
+		case PA_RULE_PUBLISH:
+			if(ldp->assigned &&
+					!prefix_equals(&best_arg.prefix, best_arg.plen, &ldp->prefix, ldp->plen)) {
+				pa_ldp_unassign(ldp);
+			}
+
+			if(ldp->assigned) {
+				pa_ldp_set_published(ldp, 0);
+			} else {
+				pa_ldp_assign(ldp, &best_arg.prefix, best_arg.plen);
+			}
+			ldp->priority = best_arg.priority;
+			ldp->rule = best_rule;
+			ldp->rule_priority = best_arg.rule_priority;
+			pa_ldp_set_published(ldp, 1);
+
+			//For the end of the process,
+			//We now publish something better.
+			ldp->best_assignment = NULL;
+
+			//TODO: Send an update to FP instead of un-publish+publish
+			break;
+		case PA_RULE_NO_MATCH:
+		default:
+			break;
+	}
+
+	/* 4. End the routine with no adoption or creation */
+	if(ldp->assigned && !ldp->valid)
+		pa_ldp_unassign(ldp);
 
 	if(ldp->assigned) {
 		//Assigned and valid
@@ -247,11 +353,8 @@ static void _pa_dp_del(struct pa_dp *dp)
 {
 	struct pa_ldp *ldp, *ldp2;
 	//Public part
-	pa_for_each_ldp_in_dp(dp, ldp) {
-		pa_ldp_set_published(ldp, 0);
-		pa_ldp_set_applied(ldp, 0);
+	pa_for_each_ldp_in_dp(dp, ldp)
 		pa_ldp_unassign(ldp);
-	}
 
 	//Private part (so the whole deletion is atomic for users)
 	pa_for_each_ldp_in_dp_safe(dp, ldp, ldp2)
@@ -285,11 +388,8 @@ static void _pa_link_del(struct pa_link *link)
 {
 	struct pa_ldp *ldp, *ldp2;
 	//Public part
-	pa_for_each_ldp_in_link(link, ldp) {
-		pa_ldp_set_published(ldp, 0);
-		pa_ldp_set_applied(ldp, 0);
+	pa_for_each_ldp_in_link(link, ldp)
 		pa_ldp_unassign(ldp);
-	}
 
 	//Private part (so the whole deletion is atomic for users)
 	pa_for_each_ldp_in_link_safe(link, ldp, ldp2)
@@ -384,8 +484,12 @@ void pa_rule_del(struct pa_core *core, struct pa_rule *rule)
 	pa_for_each_link(core, link)
 		pa_for_each_ldp_in_link(link, ldp) {
 			pa_routine_schedule(ldp);
-			if(ldp->rule == rule)
+			if(ldp->rule == rule) {
+				pa_ldp_set_published(ldp, 0); //Unpublish the prefix
+				ldp->adopting = 0;
+				uloop_timeout_cancel(&ldp->backoff_to);
 				ldp->rule = NULL; //Make it orphan
+			}
 		}
 }
 
