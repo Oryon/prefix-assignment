@@ -30,13 +30,13 @@
 #include "pa_conf.h"
 
 #ifndef PA_WARNING
-#define PA_WARNING(format, ...)
+#define PA_WARNING(format, ...) do{}while(0)
 #endif
 #ifndef PA_INFO
-#define PA_INFO(format, ...)
+#define PA_INFO(format, ...) do{}while(0)
 #endif
 #ifndef PA_DEBUG
-#define PA_DEBUG(format, ...)
+#define PA_DEBUG(format, ...) do{}while(0)
 #endif
 
 #ifndef PA_NODE_ID_PA
@@ -271,15 +271,25 @@ struct pa_user {
 
 /* The rule target indicates the desired behavior of a rule on a given ldp. */
 enum pa_rule_target {
-	PA_RULE_NO_MATCH = 0, /* The rule does not match.  */
+	/* The rule does not match.
+	 * Always valid. */
+	PA_RULE_NO_MATCH = 0,
 
-	PA_RULE_ADOPT,        /* The rule desires to adopt the orphan prefix. */
+	 /* The rule desires to adopt the orphan prefix.
+	  * Valid when: (assigned && !published && !best_assignment)*/
+	PA_RULE_ADOPT,
 
-	PA_RULE_BACKOFF,      /* The rule desires to make an assignment later. */
+	/* The rule desires to make an assignment later.
+	 * Valid when: (!assigned) */
+	PA_RULE_BACKOFF,
 
-	PA_RULE_PUBLISH,      /* The rule desires to assign and publish a prefix. */
+	/* The rule desires to assign and publish a prefix.
+	 * Always valid (with a high enough rule_priority and priority) */
+	PA_RULE_PUBLISH,
 
-	PA_RULE_DESTROY,      /* The rule desires to unassign the prefix. */
+	/* The rule desires to unassign the prefix.
+	 * Valid when: (published || adopting)*/
+	PA_RULE_DESTROY,
 };
 
 /* The argument given to rule's match function in order to get
