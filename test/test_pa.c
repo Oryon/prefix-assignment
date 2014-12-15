@@ -381,6 +381,8 @@ void pa_core_data() {
 
 	/* Adding rules */
 	struct pa_rule r1,r2;
+	r1.name = "Rule 1";
+	r2.name = "Rule 2";
 	pa_rule_add(&core, &r1);
 	pa_rule_add(&core, &r2);
 	pa_rule_del(&core, &r1);

@@ -267,11 +267,37 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 	 *********************/
 
 	struct pa_rule *rule, *r2;
+	struct pa_filter *filter;
 	struct list_head rules, *insert;
+	bool match;
 	INIT_LIST_HEAD(&rules);
 
 	/* First, sort the rules with their max priority. */
 	list_for_each_entry(rule, &ldp->core->rules, le) {
+
+		/* Apply rule filter */
+		if(rule->filter_policy == PA_FILTER_ALL) {
+			match = true;
+			list_for_each_entry(filter, &rule->filters, le) {
+				if(!filter->match || !filter->match(rule, filter, ldp)) {
+					match = false;
+					break;
+				}
+			}
+		} else {
+			match = false;
+			list_for_each_entry(filter, &rule->filters, le) {
+				if(filter->match && filter->match(rule, filter, ldp)) {
+					match = true;
+					break;
+				}
+			}
+		}
+
+		if(!match)
+			continue;
+
+		/* Get priority */
 		rule->_max_priority = rule->get_max_priority?
 				rule->get_max_priority(rule, ldp):rule->max_priority;
 

@@ -3,10 +3,14 @@
  *
  * Copyright (c) 2014 Cisco Systems, Inc.
  *
- * The Prefix Assignment Algorithm behavior depends on
- * some defined values. This file contains a configuration example.
- * You can modify it, or use a different one and build
- * the pa_* files with -DPA_CONF=your_conf_file_path.
+ * The Prefix Assignment Algorithm is generic.
+ * It can run on different flooding mechanisms,
+ * using different Node IDs, prefix space, and
+ * configuration variables.
+ * This file lists all parameters, mandatory or
+ * optional, specifying the behavior of the algorithm.
+ * You can modify it, or use a different one and build the code
+ * using it.
  *
  */
 
