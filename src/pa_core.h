@@ -300,28 +300,6 @@ struct pa_rule_arg {
 	pa_priority priority;
 };
 
-struct pa_rule;
-struct pa_filter;
-
-/* Each rule may be associated with a set of filters.
- */
-struct pa_filter {
-	/*** filter ***
-	 * Returns whether this rule is considered.
-	 * If NULL, the rule does not match.
-	 */
-	bool (*match)(struct pa_rule *, struct pa_filter *, struct pa_ldp *);
-
-	struct list_head le; //Linked in the rule
-};
-
-/* Specify rule filtering policy.
- */
-enum filter_policy {
-	PA_FILTER_ALL, //All rules must match to consider the rule
-	PA_FILTER_ANY, //At least one rule must match to consider the rule
-};
-
 /* This structure is a raw structure for prefix selection.
  */
 struct pa_rule {
@@ -329,11 +307,13 @@ struct pa_rule {
 
 	const char *name; /* Rule name, displayed in logs. */
 
-	/* A list containing all filters. */
-	struct list_head filters;
-
-	/* The filtering policy. */
-	enum filter_policy filter_policy;
+	/*** filter ***
+	 * Returns whether the rule should be ignored,
+	 * allowing for independent filtering.
+	 * If NULL, the rule is not ignored.
+	 */
+	bool (*filter)(struct pa_rule *, struct pa_ldp *, void *p);
+	void *filter_private; //Passed to filter function.
 
 	/*** get_priority ***
 	 * Returns the maximal rule priority the rule may use when
