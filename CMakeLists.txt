@@ -16,7 +16,7 @@ add_custom_target(check COMMAND ${CMAKE_CTEST_COMMAND})
 enable_testing()
 include_directories(src)
 
-add_executable(test_pa src/btrie.c src/prefix.c test/test_pa.c)
+add_executable(test_pa src/pa_rules.c src/btrie.c src/prefix.c test/test_pa.c)
 target_link_libraries(test_pa ubox)
 add_test(pa test_pa)
 add_dependencies(check test_pa)

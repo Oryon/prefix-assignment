@@ -312,7 +312,7 @@ struct pa_rule {
 	 * which enables filtering.
 	 * If NULL, the rule is accepted.
 	 */
-	bool (*filter_accept)(struct pa_rule *, struct pa_ldp *, void *p);
+	int (*filter_accept)(struct pa_rule *, struct pa_ldp *, void *p);
 	void *filter_private; //Passed to filter function.
 
 	/*** get_priority ***
