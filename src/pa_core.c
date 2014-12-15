@@ -273,7 +273,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 	/* First, sort the rules with their max priority. */
 	list_for_each_entry(rule, &ldp->core->rules, le) {
 		/* Apply rule filter */
-		if(rule->filter && rule->filter(rule, ldp, rule->filter_private))
+		if(rule->filter_accept && !rule->filter_accept(rule, ldp, rule->filter_private))
 			continue;
 
 		/* Get priority */

@@ -308,11 +308,11 @@ struct pa_rule {
 	const char *name; /* Rule name, displayed in logs. */
 
 	/*** filter ***
-	 * Returns whether the rule should be ignored,
-	 * allowing for independent filtering.
-	 * If NULL, the rule is not ignored.
+	 * Returns whether the rule should be accepted,
+	 * which enables filtering.
+	 * If NULL, the rule is accepted.
 	 */
-	bool (*filter)(struct pa_rule *, struct pa_ldp *, void *p);
+	bool (*filter_accept)(struct pa_rule *, struct pa_ldp *, void *p);
 	void *filter_private; //Passed to filter function.
 
 	/*** get_priority ***
