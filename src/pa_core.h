@@ -13,15 +13,10 @@
 #ifndef PA_CORE_H_
 #define PA_CORE_H_
 
-#include <netinet/in.h>
-#include <inttypes.h>
-
 #include <libubox/list.h>
 #include <libubox/uloop.h>
 
 #include "btrie.h"
-#include "prefix.h"
-
 
 /***************************
  * Configuration defaults  *
@@ -46,17 +41,8 @@
 #endif
 
 #ifndef PA_NODE_ID_P
-static const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
-	char n;
-	s[2*len] = '\0';
-	for(;len;len--) {
-		n = (ptr[len] & 0xf0) >> 4;
-		s[2*len - 2] = (n > 9)?('a'+(n-10)):('0'+n);
-		n = (ptr[len] & 0x0f);
-		s[2*len - 1] = (n > 9)?('a'+(n-10)):('0'+n);
-	}
-	return s;
-}
+extern const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s);
+#define PA_HEX_DUMP
 
 #define PA_NODE_ID_P   "[%s]"
 #define PA_NODE_ID_PA(node_id) pa_hex_dump((uint8_t *)node_id, sizeof(PA_NODE_ID_TYPE)*PA_NODE_ID_LEN, alloca(sizeof(PA_NODE_ID_TYPE)*PA_NODE_ID_LEN*2+1))
@@ -69,6 +55,8 @@ static const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
 #ifndef PA_RUN_DELAY
 #define PA_RUN_DELAY 20
 #endif
+
+#define pa_prefix_overlap(p1, plen1, p2, plen2) ((plen1 > plen2)?pa_prefix_contains(p2, plen2, p1):pa_prefix_contains(p1, plen1, p2))
 
 /***************************
  *       Generic API       *
@@ -131,8 +119,8 @@ void pa_link_del(struct pa_link *);
 struct pa_dp {
 	struct list_head le;    /* Linked in pa_core. */
 	struct list_head ldps;  /* List of Link/DP pairs associated with this Delegated Prefix. */
-	struct in6_addr prefix; /* The delegated prefix value. */
-	uint8_t plen;           /* The prefix length. */
+	pa_prefix prefix;       /* The delegated prefix value. */
+	pa_plen plen;           /* The prefix length. */
 #ifdef PA_DP_TYPE
 	uint8_t type;           /* Delegated Prefix type identifier provided by user. */
 #endif
@@ -140,7 +128,7 @@ struct pa_dp {
 
 /* Delegated Prefix print format and arguments */
 #define PA_DP_P "%s"
-#define PA_DP_PA(pa_dp) PREFIX_REPR(&(pa_dp)->prefix, (pa_dp)->plen)
+#define PA_DP_PA(pa_dp) pa_prefix_tostring(&(pa_dp)->prefix, (pa_dp)->plen)
 
 /* Adds and deletes a Delegated Prefix */
 int pa_dp_add(struct pa_core *, struct pa_dp *);
@@ -173,8 +161,8 @@ struct pa_ldp {
 	uint8_t adopting  : 1;          /* The Assigned Prefix will be adopted (Only set during backoff). */
 	uint8_t valid     : 1;          /* (in routine) Whether the routine will destroy the Assigned Prefix. */
 	uint8_t backoff   : 1;          /* (in routine) The routine is executed following backoff timeout. */
-	struct in6_addr prefix;         /* (if assigned) The Assigned Prefix. */
-	uint8_t plen;                   /* (if assigned) The Assigned Prefix length. */
+	pa_prefix prefix;               /* (if assigned) The Assigned Prefix. */
+	pa_plen plen;                   /* (if assigned) The Assigned Prefix length. */
 	pa_priority priority;           /* (if published) The Advertised Prefix Priority. */
 	pa_rule_priority rule_priority; /* (if published) The internal rule priority. */
 	struct pa_rule *rule;           /* (if published) The rule used to publish this prefix. */
@@ -188,7 +176,7 @@ struct pa_ldp {
 
 /* Assigned Prefix print format and arguments */
 #define PA_LDP_P "%s%%"PA_LINK_P" from "PA_DP_P" flags (%s %s %s)"
-#define PA_LDP_PA(pa_ldp) ((pa_ldp)->assigned)?PREFIX_REPR(&(pa_ldp)->prefix, (pa_ldp)->plen):"no-prefix", \
+#define PA_LDP_PA(pa_ldp) ((pa_ldp)->assigned)?pa_prefix_tostring(&(pa_ldp)->prefix, (pa_ldp)->plen):"no-prefix", \
 	PA_LINK_PA((pa_ldp)->link), PA_DP_PA((pa_ldp)->dp), \
 	((pa_ldp)->published)?"Published":"-", ((pa_ldp)->applied)?"Applied":"-", ((pa_ldp)->adopting)?"Adopting":"-"
 
@@ -198,15 +186,15 @@ struct pa_ldp {
 struct pa_advp {
 	struct pa_pentry in_core;     /* Used to link Assigned and Advertised Prefixes in the same btrie */
 	PA_NODE_ID_TYPE node_id[PA_NODE_ID_LEN]; /* The node ID of the node advertising the prefix. */
-	struct in6_addr prefix;       /* The Advertised Prefix). */
-	uint8_t plen;                 /* The Advertised Prefix length. */
+	pa_prefix prefix;             /* The Advertised Prefix). */
+	pa_plen plen;                 /* The Advertised Prefix length. */
 	pa_priority priority;         /* The Advertised Prefix Priority. */
 	struct pa_link *link;         /* Advertised Prefix associated Shared Link (or null). */
 };
 
 /* Advertised Prefix print format and arguments */
 #define PA_ADVP_P "%s%%"PA_LINK_P"@"PA_NODE_ID_P":(%d)"
-#define PA_ADVP_PA(pa_advp) PREFIX_REPR(&(pa_advp)->prefix, (pa_advp)->plen), \
+#define PA_ADVP_PA(pa_advp) pa_prefix_tostring(&(pa_advp)->prefix, (pa_advp)->plen), \
 	PA_LINK_PA((pa_advp)->link), PA_NODE_ID_PA((pa_advp)->node_id), (pa_advp)->priority
 
 /* Adds a new Advertised Prefix. */
@@ -302,8 +290,8 @@ struct pa_rule_arg {
 
 	/* These must be filled by the match function when it returns PA_RULE_PUBLISH.
 	 * It indicates which prefix to publish. */
-	struct in6_addr prefix;
-	uint8_t plen;
+	pa_prefix prefix;
+	pa_plen plen;
 
 	/* The pa priority must be specified by the match function when it returns
 	 * PA_RULE_PUBLISH or PA_RULE_ADOPT. It is the priority with which the prefix

@@ -18,6 +18,20 @@
     (type *)( (char *)ptr - offsetof(type,member) ))
 #endif
 
+#ifdef PA_HEX_DUMP
+const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
+	char n;
+	s[2*len] = '\0';
+	for(;len;len--) {
+		n = (ptr[len] & 0xf0) >> 4;
+		s[2*len - 2] = (n > 9)?('a'+(n-10)):('0'+n);
+		n = (ptr[len] & 0x0f);
+		s[2*len - 1] = (n > 9)?('a'+(n-10)):('0'+n);
+	}
+	return s;
+}
+#endif
+
 /* Returns whether the Advertised Prefix takes precedence over the Assigned Prefix. */
 #define pa_precedes(advp, ldp) \
 	((!ldp->published) || ((advp)->priority > (ldp)->priority) || \
@@ -159,14 +173,14 @@ static void pa_ldp_unassign(struct pa_ldp *ldp)
 static int pa_ldp_assign(struct pa_ldp *ldp, const struct in6_addr *prefix, uint8_t plen)
 {
 	if(ldp->assigned) {
-		PA_WARNING("Could not assign %s to "PA_LDP_P, PREFIX_REPR(prefix, plen), PA_LDP_PA(ldp));
+		PA_WARNING("Could not assign %s to "PA_LDP_P, pa_prefix_tostring(prefix, plen), PA_LDP_PA(ldp));
 		return -2;
 	}
 
 	memcpy(&ldp->prefix, prefix, sizeof(struct in6_addr));
 	ldp->plen = plen;
 	if(btrie_add(&ldp->core->prefixes, &ldp->in_core.be, (const btrie_key_t *)prefix, plen)) {
-		PA_WARNING("Could not assign %s to "PA_LINK_P, PREFIX_REPR(prefix, plen), PA_LINK_PA(ldp->link));
+		PA_WARNING("Could not assign %s to "PA_LINK_P, pa_prefix_tostring(prefix, plen), PA_LINK_PA(ldp->link));
 		return -1;
 	}
 
@@ -237,7 +251,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 		if(!ldp->best_assignment) {
 			ldp->valid = pa_ldp_global_valid(ldp); //Globally valid
 		} else {
-			ldp->valid = prefix_equals(&ldp->prefix, ldp->plen, //Different from Best Assignment
+			ldp->valid = pa_prefix_equals(&ldp->prefix, ldp->plen, //Different from Best Assignment
 					&ldp->best_assignment->prefix, ldp->best_assignment->plen);
 		}
 	} else {
@@ -317,7 +331,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 			break;
 		case PA_RULE_PUBLISH:
 			if(ldp->assigned &&
-					!prefix_equals(&best_arg.prefix, best_arg.plen, &ldp->prefix, ldp->plen)) {
+					!pa_prefix_equals(&best_arg.prefix, best_arg.plen, &ldp->prefix, ldp->plen)) {
 				pa_ldp_unassign(ldp);
 			}
 
@@ -500,7 +514,7 @@ static void _pa_advp_update(struct pa_core *core, struct pa_advp *advp)
 	pa_for_each_dp(core, dp) {
 		/* Schedule all for dps overlapping with the advp. */
 		//TODO: Maybe not necessary to schedule if we have Current and advp is not overlapping with it.
-		if(prefix_overlap(&dp->prefix, dp->plen, &advp->prefix, advp->plen)) {
+		if(pa_prefix_overlap(&dp->prefix, dp->plen, &advp->prefix, advp->plen)) {
 			pa_for_each_ldp_in_dp(dp, ldp)
 					pa_routine_schedule(ldp);
 		}

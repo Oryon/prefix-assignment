@@ -45,6 +45,32 @@
 #define PA_NODE_ID_PA(node_id) *(node_id)
 
 
+/**********************************
+ *     Prefix Space Specific      *
+ **********************************/
+
+/* The prefix storage type and prefix length type.
+ *    (Mandatory)
+ */
+#include <netinet/in.h>
+typedef struct in6_addr pa_prefix;
+typedef uint8_t pa_plen;
+
+/* Prefix manipulation functions.
+ *    (Mandatory)
+ */
+#include "prefix.h"
+#define pa_prefix_equals(p1, plen1, p2, plen2) \
+	prefix_equals(p1, plen1, p2, plen2)
+
+#define pa_prefix_contains(p1, plen1, p2) \
+	prefix_contains(p1, plen1, p2)
+
+#define pa_prefix_cpy(sp, splen, dp, dplen) \
+	do{*(dp) = *(sp); dplen = splen} while(0)
+
+#define pa_prefix_tostring(p, plen) \
+	PREFIX_REPR(p, plen)
 
 /**********************************
  *   Flooding Mechanism Specific  *
