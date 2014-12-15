@@ -145,7 +145,7 @@ static void pa_ldp_unassign(struct pa_ldp *ldp)
 
 	btrie_remove(&ldp->in_core.be);
 	ldp->assigned = 0;
-	pa_user_notify(ldp, applied); /* Tell users about that */
+	pa_user_notify(ldp, assigned); /* Tell users about that */
 
 	/* Destroying the Assigned Prefix possibly freed space that other interfaces may use.
 	 * Schedule links for the same dp, if there is no current prefix.
@@ -197,7 +197,7 @@ static bool pa_ldp_global_valid(struct pa_ldp *ldp)
  */
 static void pa_routine(struct pa_ldp *ldp, bool backoff)
 {
-	PA_DEBUG("Executing PA %sRoutine for"PA_LDP_P, backoff?"backoff ":"", PA_LDP_PA(ldp));
+	PA_DEBUG("Executing PA %sRoutine for "PA_LDP_P, backoff?"backoff ":"", PA_LDP_PA(ldp));
 
 	/*
 	 * The algorithm is slightly modified in order to provide support for
@@ -244,12 +244,9 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 		ldp->valid = 0;
 	}
 
-	if(ldp->best_assignment) {
-		/* If there is a best assignment, we can't neither
-		   Adopt nor delay prefix assignment anymore. */
-		ldp->adopting = 0;
-		uloop_timeout_cancel(&ldp->backoff_to);
-	}
+	/* If there is a best assignment, we can't adopt the prefix. */
+	if(ldp->best_assignment)
+		pa_ldp_unadopt(ldp);
 
 	/*********************
 	 * 3. Execute rules. *
@@ -408,6 +405,7 @@ static int pa_ldp_create(struct pa_core *core, struct pa_link *link, struct pa_d
 	ldp->dp = dp;
 	list_add(&ldp->in_dp, &dp->ldps);
 	PA_DEBUG("Creating Link/Delegated Prefix pair: "PA_LDP_P, PA_LDP_PA(ldp));
+	pa_routine_schedule(ldp);
 	return 0;
 }
 

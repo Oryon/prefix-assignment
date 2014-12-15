@@ -119,7 +119,7 @@ struct pa_link {
 
 /* Link print format and arguments. */
 #define PA_LINK_P "%s"
-#define PA_LINK_PA(pa_link) (pa_link)->name?(pa_link)->name:"null"
+#define PA_LINK_PA(pa_link) (pa_link)?(pa_link)->name?(pa_link)->name:"no-name":"no-link"
 
 /* Adds and deletes a Link for prefix assignment */
 int pa_link_add(struct pa_core *, struct pa_link *);
@@ -243,7 +243,7 @@ struct pa_user {
 
 /* Adds a user which will receive events callback.
  * When added, the user does not receive callbacks for existing prefixes. */
-#define pa_user_register(core, user) list_add(&(core)->users, &(user)->le)
+#define pa_user_register(core, user) list_add(&(user)->le, &(core)->users)
 
 /* Unregister a user. */
 #define pa_user_unregister(user) list_del(&(user)->le)
