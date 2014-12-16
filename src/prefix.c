@@ -12,20 +12,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-bool prefix_contains(const struct in6_addr *p, uint8_t plen, const struct in6_addr *addr)
-{
-	int blen = plen >> 3;
-	if(blen && memcmp(p, addr, blen))
-		return false;
-
-	int rem = plen & 0x07;
-	if(rem && ((p->s6_addr[blen] ^ addr->s6_addr[blen]) >> (8 - rem)))
-		return false;
-
-	return true;
-}
-
-
 const char *addr_ntop(char *dst, size_t bufflen, const struct in6_addr *addr)
 {
 	int i = IN6_IS_ADDR_V4MAPPED(addr);

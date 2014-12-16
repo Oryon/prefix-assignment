@@ -60,19 +60,9 @@
 typedef struct in6_addr pa_prefix;
 typedef uint8_t pa_plen;
 
-/* Prefix manipulation functions.
- *    (Mandatory)
+/* Prefix printing function.
  */
 #include "prefix.h"
-#define pa_prefix_equals(p1, plen1, p2, plen2) \
-	prefix_equals(p1, plen1, p2, plen2)
-
-#define pa_prefix_contains(p1, plen1, p2) \
-	prefix_contains(p1, plen1, p2)
-
-#define pa_prefix_cpy(sp, splen, dp, dplen) \
-	do{*(dp) = *(sp); dplen = splen} while(0)
-
 #define pa_prefix_tostring(p, plen) \
 	PREFIX_REPR(p, plen)
 
@@ -131,6 +121,38 @@ typedef uint16_t pa_rule_priority;
  * type of struct it is included in.
  *    (Optional) */
 #define PA_DP_TYPE
+
+
+
+/**********************************
+ *     Prefix Assignment Rules    *
+ **********************************/
+
+/* pa_rule_random requires a random
+ * function.
+ */
+#include <stdlib.h>
+#define pa_rand() rand()
+
+/* pa_rule_random requires a pseudo-random
+ * function.
+ */
+#ifdef PA_PRAND //Used by pa_rules.c
+#include <libubox/md5.h>
+static void pa_prand(uint8_t *buff, const uint8_t *seed, size_t seedlen, uint32_t ctr0, uint32_t ctr1) {
+	md5_ctx_t ctx;
+	md5_begin(&ctx);
+	md5_hash(seed, seedlen, &ctx);
+	md5_hash(&ctr0,  sizeof(ctr0), &ctx);
+	md5_hash(&ctr1, sizeof(ctr0), &ctx);
+	md5_end(buff, &ctx);
+}
+#define PA_PRAND_BUFFLEN 16
+#endif
+
+/* pa_rule_prandom makes use of the following
+ * bitwise operations.
+ */
 
 
 #endif /* PA_CONF_H_ */

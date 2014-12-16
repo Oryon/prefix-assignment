@@ -12,11 +12,6 @@
 #define PREFIX_H_
 
 #include <netinet/in.h>
-#include <stdbool.h>
-
-bool prefix_contains(const struct in6_addr *p, uint8_t plen, const struct in6_addr *addr);
-
-#define prefix_equals(p1, plen1, p2, plen2) ((plen1) == (plen2) && prefix_contains(p1, plen1, p2))
 
 const char *prefix_ntop(char *dst, size_t bufflen, const struct in6_addr *addr, uint8_t plen);
 

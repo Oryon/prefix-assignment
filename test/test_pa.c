@@ -75,7 +75,7 @@ struct test_user {
 		sput_fail_unless((ldp)->adopting == adopt, "Correct ldp adopting");
 
 #define check_ldp_prefix(ldp, p, pl) \
-		sput_fail_unless(prefix_equals(&(ldp)->prefix, (ldp)->plen, p, pl), "Correct prefix");
+		sput_fail_unless(pa_prefix_equals(&(ldp)->prefix, (ldp)->plen, p, pl), "Correct prefix");
 
 /* Custom user */
 
