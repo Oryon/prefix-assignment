@@ -5,6 +5,9 @@
 
 #include "fake_uloop.h"
 
+#define FR_MASK_RANDOM
+#include "fake_random.h"
+
 /* Make calloc fail */
 static bool calloc_fail = false;
 static void *f_calloc (size_t __nmemb, size_t __size) {
@@ -77,6 +80,16 @@ struct test_user {
 #define check_ldp_prefix(ldp, p, pl) \
 		sput_fail_unless(pa_prefix_equals(&(ldp)->prefix, (ldp)->plen, p, pl), "Correct prefix");
 
+#define check_ldp_publish(ldp, rul, rule_prio, prio) \
+		sput_fail_unless((ldp)->rule == rul, "Correct ldp rule"); \
+		sput_fail_unless((ldp)->rule_priority == rule_prio, "Correct ldp rule_priority"); \
+		sput_fail_unless((ldp)->priority == prio, "Correct ldp priority");
+
+#define check_ldp_routine(ldp, v, b, best) \
+		sput_fail_unless((ldp)->valid == v, "Correct ldp valid"); \
+		sput_fail_unless((ldp)->backoff == b, "Correct ldp backoff flag"); \
+		sput_fail_unless((ldp)->best_assignment == best, "Correct ldp best_assignment");
+
 /* Custom user */
 
 static void user_assigned(struct pa_user *user, struct pa_ldp *ldp) {
@@ -105,37 +118,193 @@ static struct test_user tuser = {
 
 /* Custom rules */
 
-struct no_match_rule {
+struct test_rule {
 	struct pa_rule rule;
-	pa_rule_priority priority;
+	struct pa_ldp ldp;
+	int filter_ctr;
+	int prio_ctr;
+	int match_ctr;
+	void *filter_p;
+	int filter_accept;
+	pa_rule_priority best_match_priority;
+	pa_rule_priority priority; //Returned by get_prio
+	enum pa_rule_target target;
+	struct pa_rule_arg arg;    //arg returned by match
 };
 
-pa_rule_priority no_match_rule_prio(__unused struct pa_rule *rule, __unused struct pa_ldp *ldp)
+static int test_rule_filter_accept(struct pa_rule *rule, struct pa_ldp *ldp, void *p)
 {
-	return container_of(rule, struct no_match_rule, rule)->priority;
+	struct test_rule *t = container_of(rule, struct test_rule, rule);
+	t->filter_p = p;
+	t->filter_ctr++;
+	TEST_DEBUG("Called filter_accept %d", t->filter_accept);
+	return t->filter_accept;
 }
 
-enum pa_rule_target no_match_rule_match(__unused struct pa_rule *rule, __unused struct pa_ldp *ldp,
-		__unused pa_rule_priority best_match_priority,
-		__unused struct pa_rule_arg *pa_arg)
+static pa_rule_priority test_rule_prio(struct pa_rule *rule, struct pa_ldp *ldp)
 {
-	return PA_RULE_NO_MATCH;
+	struct test_rule *t = container_of(rule, struct test_rule, rule);
+	t->ldp = *ldp;
+	t->prio_ctr++;
+	TEST_DEBUG("Called get_max_prio %d", t->priority);
+	return t->priority;
 }
 
-void no_match_rule_init(struct no_match_rule *r, pa_rule_priority p) {
-	r->priority = p;
-	r->rule.get_max_priority = no_match_rule_prio;
-	r->rule.match = no_match_rule_match;
+static enum pa_rule_target test_rule_match(struct pa_rule *rule, struct pa_ldp *ldp,
+		pa_rule_priority best_match_priority,
+		struct pa_rule_arg *pa_arg)
+{
+	struct test_rule *t = container_of(rule, struct test_rule, rule);
+	t->ldp = *ldp;
+	t->best_match_priority = best_match_priority;
+	*pa_arg = t->arg;
+	t->match_ctr++;
+	TEST_DEBUG("Called match %d", pa_arg->rule_priority);
+	return t->target;
 }
 
-pa_rule_priority no_priority_rule_f(struct pa_rule *rule, struct pa_ldp *ldp)
-{
-	return 0;
-}
+#define CUSTOM_RULE_INIT {.filter_accept = test_rule_filter_accept, .get_max_priority = test_rule_prio, .match = test_rule_match}
 
-void no_priority_rule_init(struct pa_rule *rule)
-{
-	rule->get_max_priority = no_priority_rule_f;
+#define cr_check_ctr(cr, filter, prio, match) do{\
+		sput_fail_unless((cr)->filter_ctr == filter, "Correct filter number of calls"); \
+		(cr)->filter_ctr = 0; \
+		sput_fail_unless((cr)->prio_ctr == prio, "Correct get_max_priority number of calls"); \
+		(cr)->prio_ctr = 0;\
+		sput_fail_unless((cr)->match_ctr == match, "Correct match number of calls"); \
+		(cr)->match_ctr = 0; } while(0)
+
+void pa_core_rule() {
+	struct pa_core core;
+	struct pa_ldp *ldp, *ldp2;
+	struct test_rule rule1 = {.rule = CUSTOM_RULE_INIT}
+	, rule2  = {.rule = CUSTOM_RULE_INIT};
+
+	sput_fail_if(fu_next(), "No pending timeout");
+
+	pa_core_init(&core);
+	pa_link_add(&core, &l1);
+	pa_dp_add(&core, &d1);
+
+	pa_for_each_ldp_in_dp(&d1, ldp2){
+		ldp = ldp2; //Get the unique ldp
+	}
+
+	fu_loop(1);
+	pa_user_register(&core, &tuser.user);
+	sput_fail_if(fu_next(), "No scheduled timer.");
+
+	pa_rule_add(&core, &rule1.rule);
+	sput_fail_unless(ldp->routine_to.pending, "Routine pending");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->routine_to) == PA_RUN_DELAY, "Correct delay");
+
+	set_time(get_time() + 1);
+	pa_rule_add(&core, &rule2.rule);
+	sput_fail_unless(ldp->routine_to.pending, "Routine pending");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->routine_to) == PA_RUN_DELAY - 1, "Correct delay");
+
+	rule1.filter_accept = 0;
+	rule2.filter_accept = 0;
+	rule1.rule.filter_private = &rule1;
+	rule2.rule.filter_private = &rule2;
+
+	fu_loop(1);
+
+	//One call to each filter
+	cr_check_ctr(&rule1, 1, 0, 0);
+	cr_check_ctr(&rule2, 1, 0, 0);
+	sput_fail_unless(rule1.filter_p == &rule1, "Correct private pointer");
+	sput_fail_unless(rule2.filter_p == &rule2, "Correct private pointer");
+	check_ldp_flags(ldp, false, false, false, false);
+	check_ldp_publish(ldp, NULL, 0, 0);
+	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+
+	pa_rule_del(&core, &rule1.rule);
+	rule1.filter_accept = 1;
+	rule1.priority = 0;
+	pa_rule_add(&core, &rule1.rule);
+	fu_loop(1);
+	cr_check_ctr(&rule1, 1, 1, 0); //prio called once
+	cr_check_ctr(&rule2, 1, 0, 0);
+	check_ldp_flags(ldp, false, false, false, false);
+	check_ldp_publish(ldp, NULL, 0, 0);
+	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+
+	pa_rule_del(&core, &rule2.rule);
+	rule2.filter_accept = 1;
+	rule2.priority = 2;
+	rule2.target = PA_RULE_NO_MATCH;
+	pa_rule_add(&core, &rule2.rule);
+	fu_loop(1);
+	cr_check_ctr(&rule1, 1, 1, 0);
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_flags(ldp, false, false, false, false);
+	check_ldp_publish(ldp, NULL, 0, 0);
+	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+
+	pa_rule_del(&core, &rule1.rule);
+	rule1.priority = 3; //Higher priority than rule2
+	rule1.target = PA_RULE_BACKOFF; //Will trigger backoff timer
+	rule1.arg.rule_priority = 1; //Smaller than promissed, match2 will be called
+	pa_rule_add(&core, &rule1.rule);
+	fr_random_push(1000); //Will wait PA_ADOPT_DELAY + pa_rand() % (PA_BACKOFF_DELAY - PA_ADOPT_DELAY)
+	fu_loop(1);
+	cr_check_ctr(&rule1, 1, 1, 1); //Rule1 matches and has a higher priority, match2 is not called
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_flags(ldp, false, false, false, false);
+	check_ldp_publish(ldp, NULL, 0, 0);
+	sput_fail_unless(ldp->backoff_to.pending, "Backoff timer pending");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == (PA_ADOPT_DELAY + 1000 % (PA_BACKOFF_DELAY - PA_ADOPT_DELAY)), "Correct delay");
+	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+
+	rule1.target = PA_RULE_PUBLISH; //This time, we publish
+	rule1.arg.plen = 63;
+	rule1.arg.prefix = advp1_01.prefix;
+	rule1.arg.rule_priority = 3; //Big enough so that rule2 is not called
+	rule1.arg.priority = 5;
+	fu_loop(1);
+	cr_check_ctr(&rule1, 1, 1, 1);
+	cr_check_ctr(&rule2, 1, 1, 0);
+	check_ldp_flags(ldp, true, true, false, false);
+	check_ldp_publish(ldp, &rule1.rule, 3, 5);
+	check_ldp_prefix(ldp, &rule1.arg.prefix, rule1.arg.plen);
+	check_ldp_routine(&rule1.ldp, 0, 1, NULL);
+	check_ldp_routine(&rule2.ldp, 0, 1, NULL);
+	check_user(&tuser, ldp, ldp, NULL);
+
+
+	//Apply
+	fu_loop(1);
+	check_ldp_flags(ldp, true, true, true, false);
+	check_user(&tuser, NULL, NULL, ldp);
+
+	//rule2 will override the assignment with a different one
+	pa_rule_del(&core, &rule2.rule);
+	rule2.priority = 4;
+	rule2.target = PA_RULE_PUBLISH; //This time, we publish
+	rule2.arg.plen = 63;
+	rule2.arg.prefix = advp1_02.prefix;
+	rule2.arg.rule_priority = 4; //Bigger than rule 1
+	rule2.arg.priority = 3;
+	pa_rule_add(&core, &rule2.rule);
+	fu_loop(1);
+	cr_check_ctr(&rule1, 1, 1, 0);
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_flags(ldp, true, true, false, false);
+	check_ldp_publish(ldp, &rule2.rule, 4, 3);
+	check_ldp_prefix(ldp, &rule2.arg.prefix, rule2.arg.plen);
+	check_ldp_routine(&rule1.ldp, 1, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+
+	//To be continued
+
+	//Finish
+	pa_link_del(&l1);
+	pa_dp_del(&d1);
+	sput_fail_if(fu_next(), "No scheduled timer.");
 }
 
 void pa_core_norule() {
@@ -415,6 +584,7 @@ int main() {
 	sput_enter_suite("Prefix assignment tests"); /* optional */
 	sput_run_test(pa_core_data);
 	sput_run_test(pa_core_norule);
+	sput_run_test(pa_core_rule);
 	sput_leave_suite(); /* optional */
 	sput_finish_testing();
 	return sput_get_return_value();

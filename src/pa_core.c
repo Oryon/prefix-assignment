@@ -61,8 +61,8 @@ const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
 	if(!(ldp)->routine_to.pending) \
 		uloop_timeout_set(&(ldp)->routine_to, PA_RUN_DELAY); }while(0)
 
-#define PA_ADOPT_DELAY(ldp)   3  //TODO
-#define PA_BACKOFF_DELAY(ldp) 10 //TODO
+#define PA_ADOPT_DELAY_r(ldp) (pa_rand() % PA_ADOPT_DELAY)
+#define PA_BACKOFF_DELAY_r(ldp) (PA_ADOPT_DELAY + pa_rand() % (PA_BACKOFF_DELAY - PA_ADOPT_DELAY))
 
 static void pa_ldp_unpublish(struct pa_ldp *ldp, bool cancel_apply)
 {
@@ -139,7 +139,7 @@ static void pa_ldp_adopt(struct pa_ldp *ldp, struct pa_rule *rule,
 	ldp->rule_priority = rule_priority;
 
 	ldp->adopting = 1;
-	uloop_timeout_set(&ldp->backoff_to, PA_ADOPT_DELAY(ldp));
+	uloop_timeout_set(&ldp->backoff_to, PA_ADOPT_DELAY_r(ldp));
 
 	PA_DEBUG("Adopted "PA_LDP_P, PA_LDP_PA(ldp));
 }
@@ -269,6 +269,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 	struct pa_rule *rule, *r2;
 	struct list_head rules, *insert;
 	INIT_LIST_HEAD(&rules);
+	ldp->backoff = backoff?1:0;
 
 	/* First, sort the rules with their max priority. */
 	list_for_each_entry(rule, &ldp->core->rules, le) {
@@ -328,7 +329,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 		case PA_RULE_BACKOFF:
 			//If already pending, we can keep waiting.
 			if(!ldp->backoff_to.pending)
-				uloop_timeout_set(&ldp->backoff_to, PA_BACKOFF_DELAY(ldp));
+				uloop_timeout_set(&ldp->backoff_to, PA_BACKOFF_DELAY_r(ldp));
 			break;
 		case PA_RULE_DESTROY:
 			pa_ldp_unassign(ldp);
@@ -558,7 +559,7 @@ void pa_advp_del(struct pa_core *core, struct pa_advp *advp)
 void pa_rule_add(struct pa_core *core, struct pa_rule *rule)
 {
 	PA_DEBUG("Adding rule "PA_RULE_P, PA_RULE_PA(rule));
-	list_add(&rule->le, &core->rules);
+	list_add_tail(&rule->le, &core->rules);
 	/* Schedule all routines */
 	struct pa_link *link;
 	struct pa_ldp *ldp;

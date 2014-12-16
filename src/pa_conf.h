@@ -67,6 +67,20 @@ typedef uint8_t pa_plen;
 	PREFIX_REPR(p, plen)
 
 /**********************************
+ *         Timing Values          *
+ **********************************/
+
+/* The maximum time a node waits before
+ * adopting a prefix.
+ */
+#define PA_ADOPT_DELAY 2000
+
+/* The maximum time a node waits before
+ * creating a new assignment.
+ */
+#define PA_BACKOFF_DELAY 50000
+
+/**********************************
  *   Flooding Mechanism Specific  *
  **********************************/
 
@@ -132,7 +146,7 @@ typedef uint16_t pa_rule_priority;
  * function.
  */
 #include <stdlib.h>
-#define pa_rand() rand()
+#define pa_rand() random()
 
 /* pa_rule_random requires a pseudo-random
  * function.
