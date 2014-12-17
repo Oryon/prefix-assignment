@@ -19,48 +19,58 @@
  *   Filters   *
  ***************/
 
+/*
+ * Filters are used to pa_core in order to allow a single rule
+ * to match or not match given different contexts. It allows
+ * filtering and action separation, thus reducing the amount
+ * of necessary code.
+ */
+
 struct pa_filter;
 typedef int (*pa_filter_f)(struct pa_rule *, struct pa_ldp *, struct pa_filter *filter);
 
 /*
- * Single filter structure used by all filters.
+ * Single filter structure used by all filters defined in this file.
  */
 struct pa_filter {
 	pa_filter_f accept;
 	struct list_head le;
 };
 
-/* Use the filter as rule base filter */
+/* Configure a rule to use the specified filter. */
 #define pa_rule_set_filter(rule, filter) do { \
 		(rule)->filter_accept = (filter)->accept; \
 		(rule)->filter_privare = filter; \
 	} while(0)
 
-/* Remove the filter as core filter */
+/* Remove the filter from a given rule. */
 #define pa_rule_unset_filter(rule) (rule)->filter_accept = NULL
 
+
+
 /*
- * Multiple filters combined together forming a more complex logic.
+ * Multiple filters can be combined together in order
+ * to form more complex combination.
+ * AND, OR, NAND and NOR are supported.
  */
 struct pa_filters;
 struct pa_filters {
 	struct pa_filter filter;
 	struct list_head filters;
+	uint8_t negate; //When set, the result is inverted
 };
 
-void pa_filters_init(struct pa_filters *, pa_filter_f accept);
-#define pa_filters_add(fs, f) list_add((f)->filter ,&(fs)->filters)
-#define pa_filters_del(f) list_del((f)->filter)
-
-/* Use this function for filter disjunction
- * At least one filter must return true
- * for the filter to return true. */
 int pa_filters_or(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
-
-/* Use this function for filter conjunction.
- * All sub-filters must return true
- * for the filter to return true. */
 int pa_filters_and(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
+
+#define pa_filters_init(fs, accept_f, negate) do{ \
+	(fs)->filter.accept = accept_f; \
+	(fs)->negate = negate;\
+	INIT_LIST_HEAD(&(fs)->filters); \
+} while(0)
+
+#define pa_filters_add(fs, f) list_add((f)->le ,&(fs)->filters)
+#define pa_filters_del(f) list_del((f)->le)
 
 
 /*
@@ -72,7 +82,32 @@ struct pa_filter_basic {
 	struct pa_dp *dp;
 };
 
-void pa_filter_basic_init(struct pa_filter_basic *filter, struct pa_link *link, struct pa_dp *dp);
+int pa_filter_basic(struct pa_rule *, struct pa_ldp *, struct pa_filter *);
+
+#define pa_filter_basic_init(fb, link, dp) \
+	((fb)->filter.accept = pa_filter_basic, (fb)->link = link, (fb)->dp = dp)
+
+/*
+ * Filter which only matches for a given dp or link type.
+ */
+struct pa_filter_type {
+	struct pa_filter filter;
+	uint8_t type;
+};
+
+#ifdef PA_DP_TYPE
+int pa_filter_type_dp(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
+#define pa_filter_type_dp_init(ft, type) \
+	((ft)->filter.accept = pa_filter_type_dp, (fb)->type = type)
+
+#endif
+
+#ifdef PA_LINK_TYPE
+int pa_filter_type_link(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
+#define pa_filter_type_link_init(ft, type) \
+	((ft)->filter.accept = pa_filter_type_dp, (fb)->type = type)
+#endif
+
 
 
 /***************

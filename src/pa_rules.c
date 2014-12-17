@@ -20,9 +20,9 @@ int pa_filters_or(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *fi
 	struct pa_filters *fs = container_of(filter, struct pa_filters, filter);
 	list_for_each_entry(filter, &fs->filters, le) {
 		if(filter->accept(rule, ldp, filter))
-			return 1;
+			return !fs->negate;
 	}
-	return 0;
+	return !!fs->negate;
 }
 
 int pa_filters_and(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter)
@@ -30,18 +30,12 @@ int pa_filters_and(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *f
 	struct pa_filters *fs = container_of(filter, struct pa_filters, filter);
 	list_for_each_entry(filter, &fs->filters, le) {
 		if(!filter->accept(rule, ldp, filter))
-			return 0;
+			return !!fs->negate;
 	}
-	return 1;
+	return !fs->negate;
 }
 
-void pa_filters_init(struct pa_filters *fs, pa_filter_f accept)
-{
-	fs->filter.accept = accept;
-	INIT_LIST_HEAD(&fs->filters);
-}
-
-static int pa_filter_basic_accept(__unused struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter)
+int pa_filter_basic(__unused struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter)
 {
 	struct pa_filter_basic *fb = container_of(filter, struct pa_filter_basic, filter);
 	if(fb->link && fb->link != ldp->link)
@@ -51,12 +45,21 @@ static int pa_filter_basic_accept(__unused struct pa_rule *rule, struct pa_ldp *
 	return 1;
 }
 
-void pa_filter_basic_init(struct pa_filter_basic *filter, struct pa_link *link, struct pa_dp *dp)
+#ifdef PA_DP_TYPE
+int pa_filter_type_dp(__unused struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter)
 {
-	filter->filter.accept = pa_filter_basic_accept;
-	filter->link = link;
-	filter->dp = dp;
+	struct pa_filter_type *ft = container_of(filter, struct pa_filter_type, filter);
+	return ldp->dp->type == ft->type;
 }
+#endif
+
+#ifdef PA_LINK_TYPE
+int pa_filter_type_link(__unused struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter)
+{
+	struct pa_filter_type *ft = container_of(filter, struct pa_filter_type, filter);
+	return ldp->link->type == ft->type;
+}
+#endif
 
 /***** Prefix selection utilities *****/
 
