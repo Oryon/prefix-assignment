@@ -88,15 +88,15 @@ struct pa_filter_type {
 
 #ifdef PA_DP_TYPE
 int pa_filter_type_dp(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
-#define pa_filter_type_dp_init(ft, type) \
-	((ft)->filter.accept = pa_filter_type_dp, (fb)->type = type)
+#define pa_filter_type_dp_init(ft, typ) \
+	((ft)->filter.accept = pa_filter_type_dp, (ft)->type = typ)
 
 #endif
 
 #ifdef PA_LINK_TYPE
 int pa_filter_type_link(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
-#define pa_filter_type_link_init(ft, type) \
-	((ft)->filter.accept = pa_filter_type_dp, (fb)->type = type)
+#define pa_filter_type_link_init(ft, typ) \
+	((ft)->filter.accept = pa_filter_type_link, (ft)->type = typ)
 #endif
 
 
