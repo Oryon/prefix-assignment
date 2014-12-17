@@ -411,6 +411,18 @@ void pa_core_rule() {
 	check_ldp_flags(ldp, true, false, false, false);
 	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
 
+
+	//Now playing with flooding delays
+	set_time(get_time()+10); //Waiting 10ms
+	pa_core_set_flooding_delay(&core, 100);
+	sput_fail_unless(ldp->backoff_to.pending, "Apply timeout pending");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == (int)(2 * core.flooding_delay), "Correct apply delay");
+
+	set_time(get_time()+10); //Waiting 10 more ms
+	pa_core_set_flooding_delay(&core, PA_DEFAULT_FLOODING_DELAY);
+	sput_fail_unless(ldp->backoff_to.pending, "Apply timeout pending");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == (int)(2 * core.flooding_delay) - 10, "Correct apply delay");
+
 	//Apply
 	fu_loop(1);
 	check_user(&tuser, NULL, NULL, ldp);
@@ -462,8 +474,15 @@ void pa_core_rule() {
 	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
 	check_ldp_publish(ldp, &rule2.rule, 4, 2);
 
-	//
-
+	//Destroy the rule that published the prefix
+	rule1.target = PA_RULE_NO_MATCH;
+	pa_rule_del(&core, &rule2.rule);
+	fu_loop(1);
+	cr_check_ctr(&rule1, 1, 1, 1);
+	cr_check_ctr(&rule2, 0, 0, 0);
+	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+	check_user(&tuser, ldp, ldp, ldp);
+	check_ldp_flags(ldp, false, false, false, false);
 
 	//Finish
 	pa_link_del(&l1);
