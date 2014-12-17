@@ -3,8 +3,8 @@
  *
  * Copyright (c) 2014 Cisco Systems, Inc.
  *
- * This document provides some pre-defined rules
- * and filters to be used with pa_core.
+ * This file provides some pre-defined rules
+ * to be used with pa_core.
  *
  */
 
@@ -13,106 +13,6 @@
 #define PA_RULES_H_
 
 #include "pa_core.h"
-
-
-/***************
- *   Filters   *
- ***************/
-
-/*
- * Filters are used to pa_core in order to allow a single rule
- * to match or not match given different contexts. It allows
- * filtering and action separation, thus reducing the amount
- * of necessary code.
- */
-
-struct pa_filter;
-typedef int (*pa_filter_f)(struct pa_rule *, struct pa_ldp *, struct pa_filter *filter);
-
-/*
- * Single filter structure used by all filters defined in this file.
- */
-struct pa_filter {
-	pa_filter_f accept;
-	struct list_head le;
-};
-
-/* Configure a rule to use the specified filter. */
-#define pa_rule_set_filter(rule, filter) do { \
-		(rule)->filter_accept = (filter)->accept; \
-		(rule)->filter_privare = filter; \
-	} while(0)
-
-/* Remove the filter from a given rule. */
-#define pa_rule_unset_filter(rule) (rule)->filter_accept = NULL
-
-
-
-/*
- * Multiple filters can be combined together in order
- * to form more complex combination.
- * AND, OR, NAND and NOR are supported.
- */
-struct pa_filters;
-struct pa_filters {
-	struct pa_filter filter;
-	struct list_head filters;
-	uint8_t negate; //When set, the result is inverted
-};
-
-int pa_filters_or(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
-int pa_filters_and(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
-
-#define pa_filters_init(fs, accept_f, negate) do{ \
-	(fs)->filter.accept = accept_f; \
-	(fs)->negate = negate;\
-	INIT_LIST_HEAD(&(fs)->filters); \
-} while(0)
-
-#define pa_filters_add(fs, f) list_add((f)->le ,&(fs)->filters)
-#define pa_filters_del(f) list_del((f)->le)
-
-
-/*
- * Simple filter used to filter for a given link, dp, or both.
- */
-struct pa_filter_basic {
-	struct pa_filter filter;
-	struct pa_link *link;
-	struct pa_dp *dp;
-};
-
-int pa_filter_basic(struct pa_rule *, struct pa_ldp *, struct pa_filter *);
-
-#define pa_filter_basic_init(fb, link, dp) \
-	((fb)->filter.accept = pa_filter_basic, (fb)->link = link, (fb)->dp = dp)
-
-/*
- * Filter which only matches for a given dp or link type.
- */
-struct pa_filter_type {
-	struct pa_filter filter;
-	uint8_t type;
-};
-
-#ifdef PA_DP_TYPE
-int pa_filter_type_dp(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
-#define pa_filter_type_dp_init(ft, type) \
-	((ft)->filter.accept = pa_filter_type_dp, (fb)->type = type)
-
-#endif
-
-#ifdef PA_LINK_TYPE
-int pa_filter_type_link(struct pa_rule *rule, struct pa_ldp *ldp, struct pa_filter *filter);
-#define pa_filter_type_link_init(ft, type) \
-	((ft)->filter.accept = pa_filter_type_dp, (fb)->type = type)
-#endif
-
-
-
-/***************
- *    Rules    *
- ***************/
 
 #define pa_rule_init(rule, get_prio, max_prio, match_f) do{ \
 	(rule)->get_max_priority = get_prio; \
