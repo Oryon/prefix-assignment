@@ -87,6 +87,8 @@ typedef uint8_t pa_plen;
 /* Advertised Prefix Priority type.
  *   (Mandatory) */
 typedef uint8_t pa_priority;
+#include <inttypes.h>
+#define PA_PRIO_P "%"PRIu8
 
 /* Default flooding delay in milliseconds.
  * Set when pa_core is initialized.
@@ -107,6 +109,8 @@ typedef uint8_t pa_priority;
  * for adoption to other rules.
  *   (Mandatory) */
 typedef uint16_t pa_rule_priority;
+#include <inttypes.h>
+#define PA_RULE_PRIO_P "%"PRIu16
 
 /* Delay, in milliseconds, between the events
  * triggering the prefix assignment routine and

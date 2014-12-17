@@ -69,7 +69,7 @@ static void pa_ldp_unpublish(struct pa_ldp *ldp, bool cancel_apply)
 	if(!ldp->published)
 		return;
 
-	PA_DEBUG("Unpublished "PA_LDP_P, PA_LDP_PA(ldp));
+	PA_DEBUG("Un-publishing "PA_LDP_P, PA_LDP_PA(ldp));
 	ldp->rule = NULL;
 	ldp->priority = 0;
 	ldp->rule_priority = 0;
@@ -87,7 +87,7 @@ static void pa_ldp_unadopt(struct pa_ldp *ldp)
 	if(!ldp->adopting)
 		return;
 
-	PA_DEBUG("Un-adopt "PA_LDP_P, PA_LDP_PA(ldp));
+	PA_DEBUG("Un-adopting "PA_LDP_P, PA_LDP_PA(ldp));
 	ldp->rule = NULL;
 	ldp->priority = 0;
 	ldp->rule_priority = 0;
@@ -138,7 +138,7 @@ static void pa_ldp_adopt(struct pa_ldp *ldp, struct pa_rule *rule,
 	ldp->adopting = 1;
 	uloop_timeout_set(&ldp->backoff_to, PA_ADOPT_DELAY_r(ldp));
 
-	PA_DEBUG("Adopted "PA_LDP_P, PA_LDP_PA(ldp));
+	PA_DEBUG("Adopting "PA_LDP_P, PA_LDP_PA(ldp));
 }
 
 static void pa_ldp_unassign(struct pa_ldp *ldp)
@@ -147,12 +147,11 @@ static void pa_ldp_unassign(struct pa_ldp *ldp)
 	if(!ldp->assigned)
 		return;
 
-	PA_INFO("Unassign prefix: "PA_LDP_P, PA_LDP_PA(ldp));
 	pa_ldp_set_applied(ldp, 0);
 	pa_ldp_unpublish(ldp, 1);
 	pa_ldp_unadopt(ldp);
 	uloop_timeout_cancel(&ldp->backoff_to);
-	ldp->adopting = 0;
+	PA_INFO("Un-assign prefix: "PA_LDP_P, PA_LDP_PA(ldp));
 
 	btrie_remove(&ldp->in_core.be);
 	ldp->assigned = 0;
@@ -167,15 +166,15 @@ static void pa_ldp_unassign(struct pa_ldp *ldp)
 	}
 }
 
-static int pa_ldp_assign(struct pa_ldp *ldp, const struct in6_addr *prefix, uint8_t plen)
+static int pa_ldp_assign(struct pa_ldp *ldp, pa_prefix *prefix, pa_plen plen)
 {
 	if(ldp->assigned) {
-		PA_WARNING("Could not assign %s to "PA_LDP_P, pa_prefix_tostring(prefix, plen), PA_LDP_PA(ldp));
+		if(!pa_prefix_equals(prefix, plen, &ldp->prefix, ldp->plen))
+			PA_WARNING("Could not assign %s to "PA_LDP_P, pa_prefix_tostring(prefix, plen), PA_LDP_PA(ldp));
 		return -2;
 	}
 
-	memcpy(&ldp->prefix, prefix, sizeof(struct in6_addr));
-	ldp->plen = plen;
+	pa_prefix_cpy(prefix, plen, &ldp->prefix, ldp->plen);
 	if(btrie_add(&ldp->core->prefixes, &ldp->in_core.be, (const btrie_key_t *)prefix, plen)) {
 		PA_WARNING("Could not assign %s to "PA_LINK_P, pa_prefix_tostring(prefix, plen), PA_LINK_PA(ldp->link));
 		return -1;
@@ -318,21 +317,32 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 		best_rule = rule;
 	}
 
+	if(best_target == PA_RULE_NO_MATCH)
+		PA_DEBUG("No matching rule was found.");
+	else
+		PA_DEBUG("Rule "PA_RULE_P" matched", PA_RULE_PA(best_rule));
+
 	/* Now act upon the best rule */
 	switch (best_target) {
 		case PA_RULE_ADOPT:
+			PA_DEBUG("Target: Adoption %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_tostring(&ldp->prefix, ldp->plen),
+					best_arg.priority, best_arg.rule_priority);
 			pa_ldp_adopt(ldp, best_rule, best_arg.priority, best_arg.rule_priority);
 			break;
 		case PA_RULE_BACKOFF:
+			PA_DEBUG("Target: Backoff");
 			//If already pending, we can keep waiting.
 			if(!ldp->backoff_to.pending)
 				uloop_timeout_set(&ldp->backoff_to, PA_BACKOFF_DELAY_r(ldp));
 			break;
 		case PA_RULE_DESTROY:
+			PA_DEBUG("Target: Destroy %s", pa_prefix_tostring(&ldp->prefix, ldp->plen));
 			pa_ldp_unassign(ldp);
 			pa_routine_schedule(ldp); //We will have to start again
 			break;
 		case PA_RULE_PUBLISH:
+			PA_DEBUG("Target: Publish %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_tostring(&ldp->prefix, ldp->plen),
+								best_arg.priority, best_arg.rule_priority);
 			if(ldp->assigned &&
 					!pa_prefix_equals(&best_arg.prefix, best_arg.plen, &ldp->prefix, ldp->plen)) {
 				pa_ldp_unassign(ldp);
