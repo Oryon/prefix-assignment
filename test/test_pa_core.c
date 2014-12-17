@@ -293,13 +293,177 @@ void pa_core_rule() {
 	fu_loop(1);
 	cr_check_ctr(&rule1, 1, 1, 0);
 	cr_check_ctr(&rule2, 1, 1, 1);
+	check_user(&tuser, ldp, ldp, ldp); //Apply is called for unapply
 	check_ldp_flags(ldp, true, true, false, false);
 	check_ldp_publish(ldp, &rule2.rule, 4, 3);
 	check_ldp_prefix(ldp, &rule2.arg.prefix, rule2.arg.plen);
 	check_ldp_routine(&rule1.ldp, 1, 0, NULL);
 	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
 
-	//To be continued
+	//Apply
+	fu_loop(1);
+	check_user(&tuser, NULL, NULL, ldp);
+
+	//Add a colliding assignment, with a smaller priority
+	advp1_02.link = NULL;
+	advp1_02.priority = 2;
+	pa_advp_add(&core, &advp1_02);
+	fu_loop(1);
+	check_user(&tuser, NULL, NULL, NULL);
+	cr_check_ctr(&rule1, 1, 1, 0);
+	cr_check_ctr(&rule2, 1, 1, 0); //rule2 not called because existing assignment has equaling priority
+	check_ldp_flags(ldp, true, true, true, false);
+	check_ldp_publish(ldp, &rule2.rule, 4, 3);
+	check_ldp_prefix(ldp, &rule2.arg.prefix, rule2.arg.plen);
+
+	//The prefix is now on-link -- Same thing
+	advp1_02.link = &l1;
+	pa_advp_update(&core, &advp1_02);
+	fu_loop(1);
+	check_user(&tuser, NULL, NULL, NULL);
+	cr_check_ctr(&rule1, 1, 1, 0);
+	cr_check_ctr(&rule2, 1, 1, 0); //rule2 not called because existing assignment has equaling priority
+	check_ldp_flags(ldp, true, true, true, false);
+	check_ldp_publish(ldp, &rule2.rule, 4, 3);
+	check_ldp_prefix(ldp, &rule2.arg.prefix, rule2.arg.plen);
+
+	//The prefix will have an higher priority, on a different link
+	advp1_02.link = NULL;
+	advp1_02.priority = 4;
+	rule2.target = PA_RULE_NO_MATCH;
+	rule1.target = PA_RULE_NO_MATCH;
+	pa_advp_update(&core, &advp1_02);
+	fu_loop(1);
+	check_user(&tuser, ldp, ldp, ldp);
+	cr_check_ctr(&rule1, 1, 1, 1);
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+	check_ldp_flags(ldp, false, false, false, false);
+	check_ldp_publish(ldp, NULL, 0, 0);
+
+	//The prefix moves on-link and is accepted
+	advp1_02.link = &l1;
+	pa_advp_update(&core, &advp1_02);
+	fu_loop(1);
+	check_user(&tuser, ldp, NULL, NULL);
+	cr_check_ctr(&rule1, 1, 1, 1);
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_flags(ldp, true, false, false, false);
+	check_ldp_prefix(ldp, &advp1_02.prefix, advp1_02.plen);
+
+	//Testing adoption
+	pa_advp_del(&core, &advp1_02);
+	rule1.target = PA_RULE_ADOPT;
+	rule1.priority = 3;
+	rule1.arg.plen = 120; //should not be used
+	rule1.arg.priority = 10;
+	rule1.arg.rule_priority = 3;
+	rule2.priority = 2;
+	fr_random_push(10);
+	fu_loop(1);
+	check_user(&tuser, NULL, NULL, NULL);
+	cr_check_ctr(&rule1, 1, 1, 1);
+	cr_check_ctr(&rule2, 1, 1, 0);
+	check_ldp_routine(&rule1.ldp, 1, 0, NULL);
+	check_ldp_flags(ldp, true, false, false, true);
+	check_ldp_publish(ldp, &rule1.rule, 3, 10);
+	check_ldp_prefix(ldp, &advp1_02.prefix, advp1_02.plen);
+	sput_fail_unless(ldp->backoff_to.pending, "Backoff timer pending");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == 10 % PA_ADOPT_DELAY, "Correct delay");
+
+	//Adopt
+	fu_loop(1);
+	check_user(&tuser, NULL, ldp, NULL);
+	check_ldp_flags(ldp, true, true, false, false);
+	check_ldp_prefix(ldp, &advp1_02.prefix, advp1_02.plen);
+	check_ldp_publish(ldp, &rule1.rule, 3, 10);
+	sput_fail_unless(ldp->backoff_to.pending, "Apply timeout pending");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == (int)(2 * core.flooding_delay), "Correct apply delay");
+	sput_fail_unless(fu_next() == &ldp->backoff_to, "Correct timeout");
+
+	//Apply
+	fu_loop(1);
+
+	//Testing destruction !
+	pa_rule_del(&core, &rule2.rule);
+	rule2.target = PA_RULE_DESTROY;
+	rule2.priority = 4; //Must be higher than 3 to be accepted
+	pa_rule_add(&core, &rule2.rule);
+	fu_loop(1);
+	check_user(&tuser, ldp, ldp, ldp);
+	cr_check_ctr(&rule1, 1, 1, 0);
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+	check_ldp_flags(ldp, false, false, false, false);
+	check_ldp_publish(ldp, NULL, 0, 0);
+
+	//Test adopt case when already applied
+	rule2.target = PA_RULE_NO_MATCH;
+	rule1.target = PA_RULE_NO_MATCH;
+	pa_advp_add(&core, &advp1_01);
+	fu_loop(1);
+	check_user(&tuser, ldp, NULL, NULL);
+	cr_check_ctr(&rule1, 1, 1, 1);
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_routine(&rule2.ldp, 0, 0, &advp1_01);
+	check_ldp_routine(&rule1.ldp, 0, 0, &advp1_01);
+	check_ldp_flags(ldp, true, false, false, false);
+	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
+
+	//Apply
+	fu_loop(1);
+	check_user(&tuser, NULL, NULL, ldp);
+	check_ldp_flags(ldp, true, false, true, false);
+
+	//Adopt
+	rule1.target = PA_RULE_ADOPT;
+	rule1.priority = 3;
+	rule1.arg.priority = 4;
+	rule1.arg.rule_priority = 3;
+	pa_advp_del(&core, &advp1_01);
+	fr_random_push(10);
+	fu_loop(1);
+	cr_check_ctr(&rule1, 1, 1, 1);
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 1, 0, NULL);
+	check_user(&tuser, NULL, NULL, NULL);
+	check_ldp_flags(ldp, true, false, true, true);
+	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
+	check_ldp_publish(ldp, &rule1.rule, 3, 4);
+	sput_fail_unless(ldp->backoff_to.pending, "Backoff timer pending");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == 10 % PA_ADOPT_DELAY, "Correct delay");
+	sput_fail_unless(fu_next() == &ldp->backoff_to, "Correct timeout");
+
+	//Adopt
+	fu_loop(1);
+	check_user(&tuser, NULL, ldp, NULL);
+	check_ldp_flags(ldp, true, true, true, false);
+	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
+	check_ldp_publish(ldp, &rule1.rule, 3, 4);
+	sput_fail_if(fu_next(), "No Apply timer.");
+
+	//Override with the same prefix
+	pa_rule_del(&core, &rule2.rule);
+	rule2.target = PA_RULE_PUBLISH;
+	rule2.priority = 4;
+	rule2.arg.priority = 2;
+	rule2.arg.rule_priority = 4;
+	rule2.arg.prefix = advp1_01.prefix;
+	rule2.arg.plen = advp1_01.plen;
+	pa_rule_add(&core, &rule2.rule);
+	fu_loop(1);
+	cr_check_ctr(&rule1, 1, 1, 0); //Too small priority to be called
+	cr_check_ctr(&rule2, 1, 1, 1);
+	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+	check_user(&tuser, NULL, ldp, NULL);
+	check_ldp_flags(ldp, true, true, true, false);
+	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
+	check_ldp_publish(ldp, &rule2.rule, 4, 2);
+
+	//
+
 
 	//Finish
 	pa_link_del(&l1);

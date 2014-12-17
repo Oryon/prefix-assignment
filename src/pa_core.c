@@ -114,9 +114,6 @@ static void pa_ldp_publish(struct pa_ldp *ldp, struct pa_rule *rule,
 	ldp->priority = priority;
 	ldp->rule_priority = rule_priority;
 
-	if(!ldp->backoff_to.pending && !ldp->applied) //Not sure this is necessary
-		uloop_timeout_set(&ldp->backoff_to, ldp->core->flooding_delay * 2);
-
 	ldp->published = 1;
 	PA_DEBUG("Published "PA_LDP_P, PA_LDP_PA(ldp));
 
