@@ -40,6 +40,11 @@
 #endif
 #endif
 
+typedef PA_PREFIX_TYPE pa_prefix;
+typedef PA_PLEN_TYPE pa_plen;
+typedef PA_PRIORITY_TYPE pa_priority;
+typedef PA_RULE_PRIORITY_TYPE pa_rule_priority;
+
 #ifndef PA_NODE_ID_P
 extern const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s);
 #define PA_HEX_DUMP

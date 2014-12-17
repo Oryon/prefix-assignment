@@ -25,3 +25,8 @@ add_executable(test_pa_filters test/test_pa_filters.c src/bitops.c src/btrie.c)
 target_link_libraries(test_pa_filters ubox)
 add_test(pa_filters test_pa_filters)
 add_dependencies(check test_pa_filters)
+
+add_executable(test_pa_rules test/test_pa_rules.c src/bitops.c src/btrie.c)
+target_link_libraries(test_pa_rules ubox)
+add_test(pa_rules test_pa_rules)
+add_dependencies(check test_pa_rules)

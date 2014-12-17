@@ -57,8 +57,8 @@
  *    (Mandatory)
  */
 #include <netinet/in.h>
-typedef struct in6_addr pa_prefix;
-typedef uint8_t pa_plen;
+#define PA_PREFIX_TYPE struct in6_addr
+#define PA_PLEN_TYPE uint8_t
 
 /* Prefix printing function.
  */
@@ -86,7 +86,7 @@ typedef uint8_t pa_plen;
 
 /* Advertised Prefix Priority type.
  *   (Mandatory) */
-typedef uint8_t pa_priority;
+#define PA_PRIORITY_TYPE uint8_t
 #include <inttypes.h>
 #define PA_PRIO_P "%"PRIu8
 
@@ -108,7 +108,7 @@ typedef uint8_t pa_priority;
  * were published by the rule are unpublished and left
  * for adoption to other rules.
  *   (Mandatory) */
-typedef uint16_t pa_rule_priority;
+#define PA_RULE_PRIORITY_TYPE uint16_t
 #include <inttypes.h>
 #define PA_RULE_PRIO_P "%"PRIu16
 
