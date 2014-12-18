@@ -16,7 +16,7 @@
 lcov -z -d .
 make check
 lcov -c -d . -o coverage.info
-genhtml coverage.info --output-directory coverage
+genhtml coverage.info --rc lcov_branch_coverage=1 --output-directory coverage
 
 # Open is OS X-ism; I'm not sure what'd be Linux-ism, sensible-browser?
 open coverage/index.html

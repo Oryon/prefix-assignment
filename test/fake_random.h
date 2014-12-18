@@ -45,7 +45,7 @@ inline static void fr_random_push(long int i) {
 /* MD5 */
 
 #include <libubox/md5.h>
-#define FR_MD5_QUEUE "fu_random"
+#define FR_MD5_QUEUE "fu_pseudo_random"
 #ifdef FR_MASK_MD5
 bool fr_mask_md5 = true;
 #else
