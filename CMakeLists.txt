@@ -30,3 +30,8 @@ add_executable(test_pa_rules test/test_pa_rules.c src/bitops.c src/btrie.c src/p
 target_link_libraries(test_pa_rules ubox)
 add_test(pa_rules test_pa_rules)
 add_dependencies(check test_pa_rules)
+
+add_executable(test_pa_store test/test_pa_store.c src/bitops.c src/prefix.c)
+target_link_libraries(test_pa_store ubox)
+add_test(pa_store test_pa_store)
+add_dependencies(check test_pa_store)
