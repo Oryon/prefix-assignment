@@ -191,6 +191,8 @@ void pa_rules_random()
 	fr_random_push(3);
 	test_rule_match(&random.rule, &ldp, 1, &arg, PA_RULE_PUBLISH);
 	test_rule_prefix(&arg, &p1, 60, 4);
+
+	test_advp_del(&core, &advp);
 }
 
 void pa_rules_adopt()
