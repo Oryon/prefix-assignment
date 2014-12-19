@@ -73,7 +73,7 @@ int prefix_pton(const char *src, struct in6_addr *addr, uint8_t *plen)
 	if (addrlen >= INET6_ADDRSTRLEN)
 		return 0;
 
-	memcpy(buf, addr, addrlen);
+	memcpy(buf, src, addrlen);
 	buf[addrlen] = 0;
 
 	if(!slash)

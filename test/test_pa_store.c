@@ -23,43 +23,62 @@ void pa_store_cache_parsing()
 	uint8_t plen, b;
 	pa_prefix_tostring(str, PP(0), (plen = 64));
 	sput_fail_if(strcmp(str, "2001:0:0:100::/64"), "Ok string");
-	pa_prefix_fromstring(str, &a, &b);
-	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
 
 	pa_prefix_tostring(str, PP(1), (plen = 64));
 	sput_fail_if(strcmp(str, "2001:0:0:101::/64"), "Ok string");
-	pa_prefix_fromstring(str, &a, &b);
-	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
 
 	pa_prefix_tostring(str, PP(1), (plen = 63));
 	sput_fail_if(strcmp(str, "2001:0:0:100::/63"), "Ok string");
-	pa_prefix_fromstring(str, &a, &b);
-	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
 
 	pa_prefix_tostring(str, PP(2), (plen = 63));
 	sput_fail_if(strcmp(str, "2001:0:0:102::/63"), "Ok string");
-	pa_prefix_fromstring(str, &a, &b);
-	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
 
 	pa_prefix_tostring(str, PP(1), (plen = 8));
 	sput_fail_if(strcmp(str, "2000::/8"), "Ok string");
-	pa_prefix_fromstring(str, &a, &b);
-	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
 
 	pa_prefix_tostring(str, PP4(10, 10), (plen = 104));
 	sput_fail_if(strcmp(str, "10.0.0.0/8"), "Ok string");
-	pa_prefix_fromstring(str, &a, &b);
-	sput_fail_unless(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring("::ffff:a00:0/104", &a, &b)==1, "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
 
 	pa_prefix_tostring(str, PP4(10, 1), (plen = 111));
 	sput_fail_if(strcmp(str, "10.0.0.0/15"), "Ok string");
-	pa_prefix_fromstring(str, &a, &b);
-	sput_fail_unless(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
 
 	pa_prefix_tostring(str, PP4(10, 1), (plen = 112));
 	sput_fail_if(strcmp(str, "10.1.0.0/16"), "Ok string");
-	pa_prefix_fromstring(str, &a, &b);
-	sput_fail_unless(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP(1), (plen = 128));
+	sput_fail_if(strcmp(str, "2001:0:0:101::/128"), "Ok string");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+	sput_fail_unless(pa_prefix_fromstring("2001:0:0:101::", &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP4(10, 1), (plen = 96));
+	sput_fail_if(strcmp(str, "0.0.0.0/0"), "Ok string");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP(1), (plen = 0));
+	sput_fail_if(strcmp(str, "::/0"), "Ok string");
+	sput_fail_unless(pa_prefix_fromstring(str, &a, &b), "Ok parse");
+	sput_fail_if(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
 }
 
 
