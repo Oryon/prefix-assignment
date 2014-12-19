@@ -170,13 +170,13 @@ static int pa_ldp_assign(struct pa_ldp *ldp, pa_prefix *prefix, pa_plen plen)
 {
 	if(ldp->assigned) {
 		if(!pa_prefix_equals(prefix, plen, &ldp->prefix, ldp->plen))
-			PA_WARNING("Could not assign %s to "PA_LDP_P, pa_prefix_tostring(prefix, plen), PA_LDP_PA(ldp));
+			PA_WARNING("Could not assign %s to "PA_LDP_P, pa_prefix_repr(prefix, plen), PA_LDP_PA(ldp));
 		return -2;
 	}
 
 	pa_prefix_cpy(prefix, plen, &ldp->prefix, ldp->plen);
 	if(btrie_add(&ldp->core->prefixes, &ldp->in_core.be, (const btrie_key_t *)prefix, plen)) {
-		PA_WARNING("Could not assign %s to "PA_LINK_P, pa_prefix_tostring(prefix, plen), PA_LINK_PA(ldp->link));
+		PA_WARNING("Could not assign %s to "PA_LINK_P, pa_prefix_repr(prefix, plen), PA_LINK_PA(ldp->link));
 		return -1;
 	}
 
@@ -325,7 +325,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 	/* Now act upon the best rule */
 	switch (best_target) {
 		case PA_RULE_ADOPT:
-			PA_DEBUG("Target: Adoption %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_tostring(&ldp->prefix, ldp->plen),
+			PA_DEBUG("Target: Adoption %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_repr(&ldp->prefix, ldp->plen),
 					best_arg.priority, best_arg.rule_priority);
 			pa_ldp_adopt(ldp, best_rule, best_arg.priority, best_arg.rule_priority);
 			break;
@@ -336,12 +336,12 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 				uloop_timeout_set(&ldp->backoff_to, PA_BACKOFF_DELAY_r(ldp));
 			break;
 		case PA_RULE_DESTROY:
-			PA_DEBUG("Target: Destroy %s", pa_prefix_tostring(&ldp->prefix, ldp->plen));
+			PA_DEBUG("Target: Destroy %s", pa_prefix_repr(&ldp->prefix, ldp->plen));
 			pa_ldp_unassign(ldp);
 			pa_routine_schedule(ldp); //We will have to start again
 			break;
 		case PA_RULE_PUBLISH:
-			PA_DEBUG("Target: Publish %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_tostring(&ldp->prefix, ldp->plen),
+			PA_DEBUG("Target: Publish %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_repr(&ldp->prefix, ldp->plen),
 								best_arg.priority, best_arg.rule_priority);
 			if(ldp->assigned &&
 					!pa_prefix_equals(&best_arg.prefix, best_arg.plen, &ldp->prefix, ldp->plen)) {

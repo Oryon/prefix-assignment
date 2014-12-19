@@ -107,7 +107,7 @@ int bmemcmp(const void *m1, const void *m2, size_t bitlen)
 
 	uint8_t *p1 = ((uint8_t *) m1) + bytes;
 	uint8_t *p2 = ((uint8_t *) m2) + bytes;
-	uint8_t mask = (0xff >> (8 - rembit)) << (8 - rembit);
+	uint8_t mask = ((uint8_t)0xff) << (8 - rembit);
 
 	return ((int) (*p1 & mask)) - ((int) (*p2 & mask));
 }

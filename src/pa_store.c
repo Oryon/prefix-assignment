@@ -68,7 +68,7 @@ static void pa_store_uncache_last_from_store(struct pa_store *store)
 
 static int pa_store_cache(struct pa_store *store, struct pa_store_link *link, pa_prefix *prefix, pa_plen plen)
 {
-	PA_DEBUG("Caching %s %s", link->name, pa_prefix_tostring(prefix, plen));
+	PA_DEBUG("Caching %s %s", link->name, pa_prefix_repr(prefix, plen));
 	struct pa_store_prefix *p;
 	list_for_each_entry(p, &link->prefixes, in_link) {
 		if(pa_prefix_equals(prefix, plen, &p->prefix, p->plen)) {

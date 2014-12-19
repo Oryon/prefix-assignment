@@ -35,3 +35,15 @@ const char *prefix_ntop(char *dst, size_t bufflen, const struct in6_addr *addr, 
 	}
 	return dst;
 }
+
+const char *prefix_ntopc(char *dst, size_t bufflen, const struct in6_addr *addr, uint8_t plen)
+{
+	struct in6_addr p = {.s6_addr={}};
+	size_t bytes = plen >> 3;
+	memcpy(&p, addr, bytes);
+	uint8_t rembit = plen & 0x07;
+	if(rembit)
+		p.s6_addr[bytes] = (0xff << (8 - rembit)) & addr->s6_addr[bytes];
+
+	return prefix_ntop(dst, bufflen, &p, plen);
+}

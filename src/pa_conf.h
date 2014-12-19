@@ -61,10 +61,14 @@
 #define PA_PLEN_TYPE uint8_t
 
 /* Prefix printing function.
+ * const char *pa_prefix_tostring(char *buff, pa_prefix *p, pa_plen plen)
+ * It must return the buffer given as argument.
+ * The provided buffer is of length PA_PREFIX_STRLEN.
  */
 #include "prefix.h"
-#define pa_prefix_tostring(p, plen) \
-	PREFIX_REPR(p, plen)
+#define PA_PREFIX_STRLEN INET6_ADDRSTRLEN + 4
+#define pa_prefix_tostring(buff, p, plen) \
+		prefix_ntopc(buff, PA_PREFIX_STRLEN, p, plen)
 
 /**********************************
  *         Timing Values          *

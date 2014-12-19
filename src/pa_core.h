@@ -67,6 +67,7 @@ extern const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s);
 #define pa_prefix_cmp(p1, l1, p2, l2) ((l1==l2)?bmemcmp(p1, p2, l1):((l1>l2)?(bmemcmp(p1, p2, l2) | 1):-(bmemcmp(p2, p1, l1) | 1)))
 #define pa_prefix_equals(p1, l1, p2, l2) ((l1==l2)&&(bmemcmp(p1, p2, l1) == 0))
 #define pa_prefix_overlap(p1, plen1, p2, plen2) ((plen1 > plen2)?pa_prefix_contains(p2, plen2, p1):pa_prefix_contains(p1, plen1, p2))
+#define pa_prefix_repr(p, plen) pa_prefix_tostring(alloca(PA_PREFIX_STRLEN), p, plen)
 
 /***************************
  *       Generic API       *
@@ -138,7 +139,7 @@ struct pa_dp {
 
 /* Delegated Prefix print format and arguments */
 #define PA_DP_P "%s"
-#define PA_DP_PA(pa_dp) pa_prefix_tostring(&(pa_dp)->prefix, (pa_dp)->plen)
+#define PA_DP_PA(pa_dp) pa_prefix_repr(&(pa_dp)->prefix, (pa_dp)->plen)
 
 /* Adds and deletes a Delegated Prefix */
 int pa_dp_add(struct pa_core *, struct pa_dp *);
@@ -186,7 +187,7 @@ struct pa_ldp {
 
 /* Assigned Prefix print format and arguments */
 #define PA_LDP_P "%s%%"PA_LINK_P" from "PA_DP_P" flags (%s %s %s)"
-#define PA_LDP_PA(pa_ldp) ((pa_ldp)->assigned)?pa_prefix_tostring(&(pa_ldp)->prefix, (pa_ldp)->plen):"no-prefix", \
+#define PA_LDP_PA(pa_ldp) ((pa_ldp)->assigned)?pa_prefix_repr(&(pa_ldp)->prefix, (pa_ldp)->plen):"no-prefix", \
 	PA_LINK_PA((pa_ldp)->link), PA_DP_PA((pa_ldp)->dp), \
 	((pa_ldp)->published)?"Published":"-", ((pa_ldp)->applied)?"Applied":"-", ((pa_ldp)->adopting)?"Adopting":"-"
 
@@ -204,7 +205,7 @@ struct pa_advp {
 
 /* Advertised Prefix print format and arguments */
 #define PA_ADVP_P "%s%%"PA_LINK_P"@"PA_NODE_ID_P":(%d)"
-#define PA_ADVP_PA(pa_advp) pa_prefix_tostring(&(pa_advp)->prefix, (pa_advp)->plen), \
+#define PA_ADVP_PA(pa_advp) pa_prefix_repr(&(pa_advp)->prefix, (pa_advp)->plen), \
 	PA_LINK_PA((pa_advp)->link), PA_NODE_ID_PA((pa_advp)->node_id), (pa_advp)->priority
 
 /* Adds a new Advertised Prefix. */

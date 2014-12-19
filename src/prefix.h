@@ -13,8 +13,12 @@
 
 #include <netinet/in.h>
 
+/* Fills the buffer with a string representation
+ * of the address and prefix length. */
 const char *prefix_ntop(char *dst, size_t bufflen, const struct in6_addr *addr, uint8_t plen);
 
-#define PREFIX_REPR(p, plen) (plen?prefix_ntop(alloca(INET6_ADDRSTRLEN + 4), INET6_ADDRSTRLEN + 4,  p, plen):"::/0")
+/* Fills the buffer with a string representation
+ * of the significant bits of the prefix. */
+const char *prefix_ntopc(char *dst, size_t bufflen, const struct in6_addr *addr, uint8_t plen);
 
 #endif /* PREFIX_H_ */

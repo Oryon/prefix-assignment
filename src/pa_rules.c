@@ -168,18 +168,18 @@ enum pa_rule_target pa_rule_random_match(struct pa_rule *rule, struct pa_ldp *ld
 
 
 	if(!found) { //No more available prefixes
-		PA_INFO("No prefix candidates of length %d could be found in %s", (int)rule_r->desired_plen, pa_prefix_tostring(&ldp->dp->prefix, ldp->dp->plen));
+		PA_INFO("No prefix candidates of length %d could be found in %s", (int)rule_r->desired_plen, pa_prefix_repr(&ldp->dp->prefix, ldp->dp->plen));
 		return PA_RULE_NO_MATCH;
 	}
 
-	PA_DEBUG("Found %"PRIu32" prefix candidates of length %d in %s", found, (int)rule_r->desired_plen, pa_prefix_tostring(&ldp->dp->prefix, ldp->dp->plen));
+	PA_DEBUG("Found %"PRIu32" prefix candidates of length %d in %s", found, (int)rule_r->desired_plen, pa_prefix_repr(&ldp->dp->prefix, ldp->dp->plen));
 	PA_DEBUG("Minimum available prefix length is %d", min_plen);
 
 	if(rule_r->pseudo_random_tentatives) {
 		pa_prefix overflow_prefix;
 		if(overflow_n) {
 			pa_rule_candidate_pick(ldp, overflow_n, &overflow_prefix, rule_r->desired_plen, min_plen, min_plen);
-			PA_DEBUG("Last (#%"PRIu32") candidate in available prefix of length %d is %s", overflow_n, min_plen, pa_prefix_tostring(&overflow_prefix, rule_r->desired_plen));
+			PA_DEBUG("Last (#%"PRIu32") candidate in available prefix of length %d is %s", overflow_n, min_plen, pa_prefix_repr(&overflow_prefix, rule_r->desired_plen));
 		}
 
 		/* Make pseudo-random tentatives. */
@@ -190,7 +190,7 @@ enum pa_rule_target pa_rule_random_match(struct pa_rule *rule, struct pa_ldp *ld
 		uint16_t i;
 		for(i=0; i<rule_r->pseudo_random_tentatives; i++) {
 			pa_rule_prefix_prandom(rule_r->pseudo_random_seed, rule_r->pseudo_random_seedlen, i, &ldp->dp->prefix, ldp->dp->plen, &tentative, rule_r->desired_plen);
-			PA_DEBUG("Trying pseudo-random %s", pa_prefix_tostring(&tentative, rule_r->desired_plen));
+			PA_DEBUG("Trying pseudo-random %s", pa_prefix_repr(&tentative, rule_r->desired_plen));
 			btrie_for_each_available_loop_stop(&ldp->core->prefixes, n, n0, l0, (btrie_key_t *)&iter_p, &iter_plen, \
 					(btrie_key_t *)&tentative, ldp->dp->plen, rule_r->desired_plen)
 			{
