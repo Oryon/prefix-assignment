@@ -15,6 +15,7 @@
 #define PA_STORE_H_
 
 #include <libubox/avl.h>
+#include <string.h>
 
 #include "pa_core.h"
 
@@ -62,6 +63,10 @@ struct pa_store_link {
  */
 void pa_store_init(struct pa_store *, struct pa_core *, uint32_t max_prefixes);
 
+/* Free all memory and cache entries.
+ * But do not flush that state to the file. */
+void pa_store_term(struct pa_store *);
+
 /* Enable/Disable prefix storage in the given file.
  * Returns -1 and sets errno when the file can't be opened or created.
  * Returns 0 otherwise.
@@ -69,6 +74,12 @@ void pa_store_init(struct pa_store *, struct pa_core *, uint32_t max_prefixes);
  * prefixes are considered more recent than already cached prefixes.
  */
 int pa_store_set_file(struct pa_store *, const char *file);
+
+#define pa_store_link_init(store_link, pa_link, linkname, max_px) do { \
+		(store_link)->link = pa_link; \
+		(store_link)->max_prefixes = max_px; \
+		strcpy((store_link)->name, linkname); \
+	} while(0)
 
 void pa_store_link_add(struct pa_store *, struct pa_store_link *);
 void pa_store_link_remove(struct pa_store *, struct pa_store_link *);
