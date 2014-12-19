@@ -61,14 +61,28 @@
 #define PA_PLEN_TYPE uint8_t
 
 /* Prefix printing function.
- * const char *pa_prefix_tostring(char *buff, pa_prefix *p, pa_plen plen)
  * It must return the buffer given as argument.
+ * Function prototype is:
+ *    const char *pa_prefix_tostring(char *dst, const pa_prefix *prefix, pa_plen plen)
  * The provided buffer is of length PA_PREFIX_STRLEN.
+ *    (Mandatory if logging is enabled)
  */
 #include "prefix.h"
 #define PA_PREFIX_STRLEN INET6_ADDRSTRLEN + 4
 #define pa_prefix_tostring(buff, p, plen) \
 		prefix_ntopc(buff, PA_PREFIX_STRLEN, p, plen)
+
+/* Prefix parsing function used by pa_store.
+ * A written or read prefix must not include
+ * any space ' ', tab '\t' , newline '\n' or '#' characters.
+ * Function prototype is:
+ *    int pa_prefix_fromstring(const char *src, pa_prefix *addr, pa_plen *plen)
+ * The prefix must fit in a PA_PREFIX_STRLEN
+ * long buffer (null character included).
+ *    (Mandatory when pa_store is enabled)
+ */
+#define pa_prefix_fromstring(buff, p, plen) \
+		prefix_pton(buff, p, plen)
 
 /**********************************
  *         Timing Values          *
@@ -171,10 +185,5 @@ static void pa_prand(uint8_t *buff, const uint8_t *seed, size_t seedlen, uint32_
 }
 #define PA_PRAND_BUFFLEN 16
 #endif
-
-/* pa_rule_prandom makes use of the following
- * bitwise operations.
- */
-
 
 #endif /* PA_CONF_H_ */

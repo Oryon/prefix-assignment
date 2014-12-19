@@ -10,8 +10,58 @@
 #include "sput.h"
 
 static struct in6_addr p = {{{0x20, 0x01, 0, 0, 0, 0, 0x01, 0x00}}};
+static struct in6_addr v4 = {{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}}};
 #define PV(i) (p.s6_addr[7] = i, p)
 #define PP(i) (p.s6_addr[7] = i, &p)
+#define PP4(i, u) (v4.s6_addr[12] = i, v4.s6_addr[13] = u, &v4)
+
+//Test prefix parsing
+void pa_store_cache_parsing()
+{
+	char str[PA_PREFIX_STRLEN];
+	struct in6_addr a;
+	uint8_t plen, b;
+	pa_prefix_tostring(str, PP(0), (plen = 64));
+	sput_fail_if(strcmp(str, "2001:0:0:100::/64"), "Ok string");
+	pa_prefix_fromstring(str, &a, &b);
+	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP(1), (plen = 64));
+	sput_fail_if(strcmp(str, "2001:0:0:101::/64"), "Ok string");
+	pa_prefix_fromstring(str, &a, &b);
+	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP(1), (plen = 63));
+	sput_fail_if(strcmp(str, "2001:0:0:100::/63"), "Ok string");
+	pa_prefix_fromstring(str, &a, &b);
+	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP(2), (plen = 63));
+	sput_fail_if(strcmp(str, "2001:0:0:102::/63"), "Ok string");
+	pa_prefix_fromstring(str, &a, &b);
+	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP(1), (plen = 8));
+	sput_fail_if(strcmp(str, "2000::/8"), "Ok string");
+	pa_prefix_fromstring(str, &a, &b);
+	sput_fail_unless(pa_prefix_cmp(&p, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP4(10, 10), (plen = 104));
+	sput_fail_if(strcmp(str, "10.0.0.0/8"), "Ok string");
+	pa_prefix_fromstring(str, &a, &b);
+	sput_fail_unless(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP4(10, 1), (plen = 111));
+	sput_fail_if(strcmp(str, "10.0.0.0/15"), "Ok string");
+	pa_prefix_fromstring(str, &a, &b);
+	sput_fail_unless(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+
+	pa_prefix_tostring(str, PP4(10, 1), (plen = 112));
+	sput_fail_if(strcmp(str, "10.1.0.0/16"), "Ok string");
+	pa_prefix_fromstring(str, &a, &b);
+	sput_fail_unless(pa_prefix_cmp(&v4, plen, &a, b), "Ok prefix");
+}
+
 
 void pa_store_cache_test()
 {
@@ -198,6 +248,7 @@ void pa_store_cache_test()
 int main() {
 	sput_start_testing();
 	sput_enter_suite("Prefix Assignment Storage tests"); /* optional */
+	sput_run_test(pa_store_cache_parsing);
 	sput_run_test(pa_store_cache_test);
 	sput_leave_suite(); /* optional */
 	sput_finish_testing();

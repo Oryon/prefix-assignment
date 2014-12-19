@@ -47,3 +47,56 @@ const char *prefix_ntopc(char *dst, size_t bufflen, const struct in6_addr *addr,
 
 	return prefix_ntop(dst, bufflen, &p, plen);
 }
+
+int prefix_pton(const char *src, struct in6_addr *addr, uint8_t *plen)
+{
+	char buf[INET6_ADDRSTRLEN];
+	char *slash = strchr(src, '/'), *c;
+	uint8_t parsed_len = 128;
+	size_t addrlen;
+	if(slash) {
+		addrlen = strlen(slash + 1);
+		if(!addrlen || addrlen > 3)
+			return 0;
+
+		/* atoi doesn't return errors, so we check string correctness */
+		for(c = slash + 1; *c; c++) {
+			if(*c < '0' || *c > '9')
+				return 0;
+		}
+		parsed_len = atoi(slash + 1);
+		addrlen = slash - src;
+	} else {
+		addrlen = strlen(src);
+	}
+
+	if (addrlen >= INET6_ADDRSTRLEN)
+		return 0;
+
+	memcpy(buf, addr, addrlen);
+	buf[addrlen] = 0;
+
+	if(!slash)
+		*plen = 128;
+
+	if(inet_pton(AF_INET6, buf, addr) == 1) {
+		if(slash) {
+			if(parsed_len > 128)
+				return 0;
+			*plen = parsed_len;
+		}
+	} else if(inet_pton(AF_INET, buf, &addr->s6_addr[12]) == 1) {
+		if(slash) {
+			if(parsed_len > 32)
+				return 0;
+			*plen = parsed_len + 96;
+		}
+		memset(addr, 0, 10);
+		addr->s6_addr16[5] = 0xffff;
+	} else {
+		return 0;
+	}
+
+	return 1;
+}
+
