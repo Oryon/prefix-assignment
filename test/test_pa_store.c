@@ -5,6 +5,68 @@
 
 #define TEST_DEBUG(format, ...) printf("TEST Debug   : "format"\n", ##__VA_ARGS__)
 
+
+
+#include "fake_uloop.h"
+
+/* Fake file handling */
+int fake_files = 0;
+
+FILE *test_fopen_ret = NULL;
+const char *test_fopen_path = NULL;
+const char *test_fopen_mode = NULL;
+FILE *test_fopen(const char *path, const char *mode)
+{
+	test_fopen_mode = mode;
+	test_fopen_path = path;
+	return fake_files?test_fopen_ret:fopen(path, mode);
+}
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+const char *test_open_pathname = NULL;
+int test_open_flags = 0;
+int test_open_mode = 0;
+int test_open_ret = -1;
+int test_open(const char *pathname, int flags, mode_t mode)
+{
+	test_open_pathname = pathname;
+	test_open_flags = flags;
+	test_open_mode = mode;
+	return fake_files?test_open_ret:open(pathname,flags);
+}
+
+char test_getline_lines[30][200];
+int test_getline_n = 0;
+int test_getline_max = 0;
+ssize_t test_getline(char **lineptr, size_t *n, FILE *stream)
+{
+	if(!fake_files)
+		return getline(lineptr, n, stream);
+
+	if(test_getline_n >= test_getline_max) {
+		*lineptr = NULL;
+		return -1;
+	}
+	*lineptr = test_getline_lines[test_getline_n++];
+	*n = strlen(*lineptr)+1;
+	return *n - 1;
+}
+
+FILE *test_close_fp = NULL;
+int test_fclose(FILE *fp)
+{
+	test_close_fp = fp;
+	return fake_files?0:fclose(fp);
+}
+
+#define fopen test_fopen
+#define fclose test_fclose
+#define open test_open
+#define getline test_getline
+
 #include "pa_store.c"
 
 #include "sput.h"
@@ -14,6 +76,108 @@ static struct in6_addr v4 = {{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}}};
 #define PV(i) (p.s6_addr[7] = i, p)
 #define PP(i) (p.s6_addr[7] = i, &p)
 #define PP4(i, u) (v4.s6_addr[12] = i, v4.s6_addr[13] = u, &v4)
+
+void pa_store_load_test()
+{
+	struct pa_core core;
+	INIT_LIST_HEAD(&core.users);
+
+	struct pa_store store;
+	pa_store_init(&store, &core, 10);
+
+	fake_files = 1;
+	const char *filepath = "/file/path";
+
+	sput_fail_unless(pa_store_load(&store) == -1, "No specified file");
+
+	test_open_ret = -1;
+	pa_store_set_file(&store, filepath);
+	sput_fail_if(store.filepath != NULL, "No file path");
+
+	test_open_ret = 1;
+	pa_store_set_file(&store, filepath);
+	sput_fail_if(strcmp(store.filepath, filepath), "Correct file path");
+
+	test_fopen_ret = NULL;
+	sput_fail_unless(pa_store_load(&store) == -1, "Cannot load file");
+
+	test_fopen_ret = (FILE *)1;
+	sput_fail_unless(pa_store_load(&store) == 0, "Can load file");
+	sput_fail_unless(!strcmp(test_fopen_path, filepath), "Correct filepath");
+
+	strcpy(test_getline_lines[0], "#\n");
+	strcpy(test_getline_lines[1], " #\n");
+	strcpy(test_getline_lines[2], "\t#");
+	strcpy(test_getline_lines[3], "#\n");
+	test_getline_n = 0;
+	test_getline_max = 4;
+	sput_fail_unless(pa_store_load(&store) == 0, "Can load file");
+	sput_fail_unless(test_getline_n == 4, "5 getline calls");
+
+#define pa_store_load_line(line, ret) do { \
+		test_getline_n = 0;\
+		test_getline_max = 1;\
+		strcpy(test_getline_lines[0], line);\
+		sput_fail_unless(pa_store_load(&store) == ret, "Load single line");\
+		sput_fail_unless(test_getline_n == 1, "2 getline calls"); \
+	} while(0)
+
+	pa_store_load_line("  \n", 0);
+	pa_store_load_line(" #\n", 0);
+	pa_store_load_line("#### #### ### ### ###\n", 0);
+	pa_store_load_line(" \t\t\n", 0);
+	pa_store_load_line("\t", 0);
+	pa_store_load_line("", 0);
+
+	pa_store_load_line("aa", -1);
+	pa_store_load_line(" aa aa  aa\t a", -1);
+	pa_store_load_line("prefix ", -1);
+	pa_store_load_line("prefix nya notaprefix", -1);
+	pa_store_load_line("prefix nya ::/0 tomanyargs", -1);
+
+	struct pa_store_prefix *prefix;
+	struct pa_store_link *link;
+
+	pa_store_load_line("prefix link0 2001:0:0:100::/64", 0);
+	sput_fail_unless(store.n_prefixes == 1, "Correct number of prefixes");
+	prefix = list_entry(store.prefixes.next, struct pa_store_prefix, in_store);
+	sput_fail_if(pa_prefix_cmp(&prefix->prefix, prefix->plen, PP(0), 64), "Correct prefix");
+	link = list_entry(store.links.next, struct pa_store_link, le);
+	sput_fail_if(strcmp("link0", link->name), "Link name");
+	sput_fail_if(link->link, "Private link");
+	sput_fail_unless(link->n_prefixes == 1, "One single prefix");
+	sput_fail_unless(store.links.next->next == &store.links, "One single link");
+
+	//Load same prefix again
+	pa_store_load_line("prefix link0 2001:0:0:100::/64", 0);
+	sput_fail_unless(store.n_prefixes == 1, "Correct number of prefixes");
+	prefix = list_entry(store.prefixes.next, struct pa_store_prefix, in_store);
+	sput_fail_if(pa_prefix_cmp(&prefix->prefix, prefix->plen, PP(0), 64), "Correct prefix");
+	link = list_entry(store.links.next, struct pa_store_link, le);
+	sput_fail_if(strcmp("link0", link->name), "Link name");
+	sput_fail_if(link->link, "Private link");
+	sput_fail_unless(link->n_prefixes == 1, "One single prefix");
+	sput_fail_unless(store.links.next->next == &store.links, "One single link");
+
+	//Uncache
+	pa_store_uncache(&store, link, prefix);
+	sput_fail_unless(list_empty(&store.links), "No link");
+
+	//Load multiple prefixes
+	strcpy(test_getline_lines[0], "#\n");
+	strcpy(test_getline_lines[1], "prefix link0 2001:0:0:100::/64\n");
+	strcpy(test_getline_lines[2], "prefix link0 2001:0:0:101::/64\n");
+	strcpy(test_getline_lines[3], "prefix link1 2001:0:0:101::/64\n");
+	test_getline_n = 0;
+	test_getline_max = 4;
+	sput_fail_unless(pa_store_load(&store) == 0, "Can load file");
+	sput_fail_unless(store.n_prefixes == 3, "3 prefixes");
+	prefix = list_entry(store.prefixes.next, struct pa_store_prefix, in_store);
+	sput_fail_if(pa_prefix_cmp(&prefix->prefix, prefix->plen, PP(1), 64), "Correct prefix");
+	link = list_entry(store.links.next, struct pa_store_link, le);
+	sput_fail_if(strcmp("link1", link->name), "Link name");
+	sput_fail_unless(link->n_prefixes == 1, "One prefix in link1");
+}
 
 //Test prefix parsing
 void pa_store_cache_parsing()
@@ -269,6 +433,7 @@ int main() {
 	sput_enter_suite("Prefix Assignment Storage tests"); /* optional */
 	sput_run_test(pa_store_cache_parsing);
 	sput_run_test(pa_store_cache_test);
+	sput_run_test(pa_store_load_test);
 	sput_leave_suite(); /* optional */
 	sput_finish_testing();
 	return sput_get_return_value();

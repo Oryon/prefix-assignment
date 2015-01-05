@@ -15,6 +15,8 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#define NTOKENS 3
+
 struct pa_store_prefix {
 	struct list_head in_store;
 	struct list_head in_link;
@@ -50,9 +52,9 @@ static struct pa_store_link *pa_store_link_goc(struct pa_store *store, const cha
 				PA_WARNING("Parsing error in file %s", store->filepath);\
 				err = -1;\
 			}\
-			PA_WARNING(" - "errmsg" at line %d: %s", ##__VA_ARGS__, (int)linecnt, line); \
-		}\
-		continue;
+			PA_WARNING(" - "errmsg" at line %d", ##__VA_ARGS__, (int)linecnt); \
+			continue;\
+		}
 
 int pa_store_load(struct pa_store *store)
 {
@@ -74,7 +76,7 @@ int pa_store_load(struct pa_store *store)
 	int err = 0;
 	while ((read = getline(&line, &len, f)) != -1) {
 		linecnt++;
-		char *tokens[3] = {NULL, NULL, NULL};
+		char *tokens[NTOKENS] = {};
 		int word = -1, reading = 0;
 		ssize_t pos;
 		for(pos = 0; pos < read; pos++) {
@@ -92,7 +94,7 @@ int pa_store_load(struct pa_store *store)
 					if(!reading) {
 						word++;
 						reading = 1;
-						if(word < 3)
+						if(word < NTOKENS)
 							tokens[word] = &line[pos];
 					}
 					break;
@@ -108,7 +110,7 @@ int pa_store_load(struct pa_store *store)
 			struct pa_store_link *l;
 			PAS_PE(!tokens[1] || !tokens[2], "Missing arguments");
 			PAS_PE(word >= 3, "Too many arguments");
-			PAS_PE(pa_prefix_fromstring(tokens[2], &px, &plen), "Invalid prefix");
+			PAS_PE(!pa_prefix_fromstring(tokens[2], &px, &plen), "Invalid prefix");
 			PAS_PE(strlen(tokens[1]) >= PA_STORE_NAMELEN, "Link name '%s' is too long", tokens[1]);
 			PAS_PE(!(l = pa_store_link_goc(store, tokens[1], 1)), "Internal error");
 			pa_store_cache(store, l, &px, plen);
@@ -311,6 +313,7 @@ int pa_store_set_file(struct pa_store *store, const char *filepath)
 	int fd;
 	if((fd = open(filepath, O_RDWR | O_CREAT, 0x00664)) == -1) {
 		PA_WARNING("Could not open file (Or incorrect authorizations) %s: %s", filepath, strerror(errno));
+		store->filepath = NULL;
 		return -1;
 	}
 	store->filepath = filepath;
