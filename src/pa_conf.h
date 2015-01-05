@@ -68,21 +68,11 @@
  *    (Mandatory if logging is enabled)
  */
 #include "prefix.h"
-#define PA_PREFIX_STRLEN INET6_ADDRSTRLEN + 4
+#define PA_PREFIX_STRLEN 50
 #define pa_prefix_tostring(buff, p, plen) \
 		prefix_ntopc(buff, PA_PREFIX_STRLEN, p, plen)
 
-/* Prefix parsing function used by pa_store.
- * A written or read prefix must not include
- * any space ' ', tab '\t' , newline '\n' or '#' characters.
- * Function prototype is:
- *    int pa_prefix_fromstring(const char *src, pa_prefix *addr, pa_plen *plen)
- * The prefix must fit in a PA_PREFIX_STRLEN
- * long buffer (null character included).
- *    (Mandatory when pa_store is enabled)
- */
-#define pa_prefix_fromstring(buff, p, plen) \
-		prefix_pton(buff, p, plen)
+
 
 /**********************************
  *         Timing Values          *
