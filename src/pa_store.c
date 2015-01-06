@@ -386,6 +386,7 @@ int pa_store_set_file(struct pa_store *store, const char *filepath,
 			}
 		}
 	}
+	free(line);
 	fclose(f);
 
 	store->token_count = token_count;
