@@ -25,6 +25,7 @@ FILE *test_fopen(const char *path, const char *mode)
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <sys/stat.h>
 
 const char *test_open_pathname = NULL;
 int test_open_flags = 0;
@@ -77,8 +78,95 @@ static struct in6_addr v4 = {{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}}};
 #define PP(i) (p.s6_addr[7] = i, &p)
 #define PP4(i, u) (v4.s6_addr[12] = i, v4.s6_addr[13] = u, &v4)
 
+
+void pa_store_saveload_test()
+{
+	fu_init();
+	struct pa_core core;
+	INIT_LIST_HEAD(&core.users);
+
+	struct pa_store store;
+	pa_store_init(&store, &core, 4);
+	const char *filepath = "/tmp/test_pa_core.store";
+	struct pa_store_prefix *prefix;
+	struct pa_store_link *link;
+
+	unlink(filepath);
+
+	fake_files = 1;
+
+	test_open_ret = 1;
+	pa_store_set_file(&store, filepath);
+	sput_fail_if(strcmp(store.filepath, filepath), "Correct file path");
+
+	strcpy(test_getline_lines[0], "prefix link0 2001:0:0:100::/62");
+	strcpy(test_getline_lines[1], "prefix link1 2001:0:0:101::/63");
+	strcpy(test_getline_lines[2], "prefix link0 2001:0:0:102::/64");
+	strcpy(test_getline_lines[3], "prefix link1 2001:0:0:103::/65");
+	test_getline_n = 0;
+	test_getline_max = 4;
+	sput_fail_unless(pa_store_load(&store) == 0, "Can load virtual file");
+
+
+	fake_files = 0;
+
+	sput_fail_if(pa_store_save(&store), "Store in file");
+	pa_store_term(&store); //Empty this store
+
+	pa_store_init(&store, &core, 3);
+
+	chmod(filepath, 0);
+	sput_fail_unless(pa_store_set_file(&store, filepath), "Can't open file");
+
+	chmod(filepath, S_IRUSR);
+	sput_fail_unless(pa_store_set_file(&store, filepath), "Can't open file");
+
+	chmod(filepath, S_IRUSR | S_IWUSR);
+	sput_fail_if(pa_store_set_file(&store, filepath), "Can open file");
+
+	sput_fail_if(strcmp(store.filepath, filepath), "Correct file path");
+	sput_fail_unless(pa_store_load(&store) == 0, "Can load virtual file");
+
+	sput_fail_unless(store.n_prefixes == 3, "3 cached entries");
+
+
+	//Check values
+	link = list_entry(store.links.next, struct pa_store_link, le);
+	sput_fail_if(strcmp(link->name, "link1"), "Correct link name");
+	sput_fail_unless(link->n_prefixes == 2,"Two cached prefix");
+
+	prefix = list_entry(link->prefixes.next, struct pa_store_prefix, in_link);
+	sput_fail_if(pa_prefix_cmp(PP(3), 65, &prefix->prefix, prefix->plen), "Correct prefix");
+
+	prefix = list_entry(link->prefixes.prev, struct pa_store_prefix, in_link);
+	sput_fail_if(pa_prefix_cmp(PP(1), 63, &prefix->prefix, prefix->plen), "Correct prefix");
+
+	link = list_entry(store.links.prev, struct pa_store_link, le);
+	sput_fail_if(strcmp(link->name, "link0"), "Correct link name");
+	sput_fail_unless(link->n_prefixes == 1,"One cached prefix");
+
+	prefix = list_entry(link->prefixes.next, struct pa_store_prefix, in_link);
+	sput_fail_if(pa_prefix_cmp(PP(2), 64, &prefix->prefix, prefix->plen), "Correct prefix");
+
+	//Load and save
+	sput_fail_if(pa_store_save(&store), "Store in file");
+	sput_fail_unless(pa_store_load(&store) == 0, "Can load virtual file");
+	sput_fail_unless(store.n_prefixes == 3, "3 cached entries");
+
+	//Remove file and load again
+	unlink(filepath);
+	sput_fail_unless(pa_store_load(&store) == -1, "Cannot load virtual file");
+
+	//Save again
+	sput_fail_if(pa_store_save(&store), "Store in file");
+
+	unlink(filepath);
+	pa_store_term(&store);
+}
+
 void pa_store_load_test()
 {
+	fu_init();
 	struct pa_core core;
 	INIT_LIST_HEAD(&core.users);
 
@@ -177,6 +265,9 @@ void pa_store_load_test()
 	link = list_entry(store.links.next, struct pa_store_link, le);
 	sput_fail_if(strcmp("link1", link->name), "Link name");
 	sput_fail_unless(link->n_prefixes == 1, "One prefix in link1");
+
+	pa_store_term(&store);
+	fake_files = 0;
 }
 
 //Test prefix parsing
@@ -434,6 +525,7 @@ int main() {
 	sput_run_test(pa_store_cache_parsing);
 	sput_run_test(pa_store_cache_test);
 	sput_run_test(pa_store_load_test);
+	sput_run_test(pa_store_saveload_test);
 	sput_leave_suite(); /* optional */
 	sput_finish_testing();
 	return sput_get_return_value();

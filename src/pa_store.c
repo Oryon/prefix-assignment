@@ -280,13 +280,23 @@ void pa_store_link_remove(struct pa_store *store, struct pa_store_link *link)
 {
 	struct pa_store_link *l;
 	list_del(&link->le);
-	if(link->n_prefixes && (l = pa_store_link_goc(store, link->name, 1))) {
+	if(!link->n_prefixes)
+		return;
+
+	if(((strlen(link->name) && (l = pa_store_link_goc(store, link->name, 1))))) {
 		list_splice(&link->prefixes, &l->prefixes); //Save prefixes in a private list
 		l->n_prefixes = link->n_prefixes;
 
 		if(l->max_prefixes)
 			while(l->n_prefixes > l->max_prefixes)
 				pa_store_uncache_last_from_link(store, l);
+	} else {
+		struct pa_store_prefix *p;
+		list_for_each_entry(p, &link->prefixes, in_link) {
+			list_del(&p->in_store);
+			free(p);
+		}
+		pa_store_updated(&store);
 	}
 	return;
 }
