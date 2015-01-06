@@ -14,8 +14,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-#define NTOKENS 3
+#include <inttypes.h>
 
 struct pa_store_prefix {
 	struct list_head in_store;
@@ -46,6 +45,40 @@ static struct pa_store_link *pa_store_link_goc(struct pa_store *store, const cha
 	return l;
 }
 
+/*  */
+static void pa_store_getwords(char *line, char *words[], size_t nwords)
+{
+	size_t i;
+	for(i=0; i<nwords; i++)
+		words[i] = NULL;
+
+	i = 0;
+	size_t pos = 0, reading = 0;
+	while(1) {
+		switch (line[pos]) {
+		case '\0':
+			return;
+		case ' ':
+		case '\n':
+		case '\t':
+			if(reading) {
+				line[pos] = '\0';
+				reading = 0;
+			}
+			break;
+		default:
+			if(!reading) {
+				reading = 1;
+				if(i < nwords)
+					words[i] = &line[pos];
+				i++;
+			}
+			break;
+		}
+		pos++;
+	}
+}
+
 #define PAS_PE(test, errmsg, ...) \
 		if(test) { \
 			if(!err) {\
@@ -56,15 +89,10 @@ static struct pa_store_link *pa_store_link_goc(struct pa_store *store, const cha
 			continue;\
 		}
 
-int pa_store_load(struct pa_store *store)
+int pa_store_load(struct pa_store *store, const char *filepath)
 {
 	FILE *f;
-	if(!store->filepath) {
-		PA_WARNING("No specified file.");
-		return -1;
-	}
-
-	if(!(f = fopen(store->filepath, "r"))) {
+	if(!(f = fopen(filepath, "r"))) {
 		PA_WARNING("Cannot open file %s (read mode) - %s", store->filepath, strerror(errno));
 		return -1;
 	}
@@ -76,46 +104,24 @@ int pa_store_load(struct pa_store *store)
 	int err = 0;
 	while ((read = getline(&line, &len, f)) != -1) {
 		linecnt++;
-		char *tokens[NTOKENS] = {};
-		int word = -1, reading = 0;
-		ssize_t pos;
-		for(pos = 0; pos < read; pos++) {
-			switch (line[pos]) {
-				case ' ':
-				case '\n':
-				case '\t':
-				case '\0':
-					if(reading) {
-						line[pos] = '\0';
-						reading = 0;
-					}
-					break;
-				default:
-					if(!reading) {
-						word++;
-						reading = 1;
-						if(word < NTOKENS)
-							tokens[word] = &line[pos];
-					}
-					break;
-			}
-		}
+		char *words[4];
+		pa_store_getwords(line, words, 4);
 
-		if(!tokens[0] || tokens[0][0] == '#')
+		if(!words[0] || words[0][0] == '#')
 			continue;
 
-		if(!strcmp(tokens[0], PA_STORE_PREFIX)) {
+		if(!strcmp(words[0], PA_STORE_PREFIX)) {
 			pa_prefix px;
 			pa_plen plen;
 			struct pa_store_link *l;
-			PAS_PE(!tokens[1] || !tokens[2], "Missing arguments");
-			PAS_PE(word >= 3, "Too many arguments");
-			PAS_PE(!pa_prefix_fromstring(tokens[2], &px, &plen), "Invalid prefix");
-			PAS_PE(strlen(tokens[1]) >= PA_STORE_NAMELEN, "Link name '%s' is too long", tokens[1]);
-			PAS_PE(!(l = pa_store_link_goc(store, tokens[1], 1)), "Internal error");
+			PAS_PE(!words[1] || !words[2], "Missing arguments");
+			PAS_PE(words[3] && words[3][0] != '#', "Too many arguments");
+			PAS_PE(!pa_prefix_fromstring(words[2], &px, &plen), "Invalid prefix");
+			PAS_PE(strlen(words[1]) >= PA_STORE_NAMELEN, "Link name '%s' is too long", words[1]);
+			PAS_PE(!(l = pa_store_link_goc(store, words[1], 1)), "Internal error");
 			pa_store_cache(store, l, &px, plen);
 		} else {
-			PAS_PE(1,"Unknown type %s", tokens[0]);
+			PAS_PE(1,"Unknown type %s", words[0]);
 		}
 	}
 
@@ -166,16 +172,33 @@ int pa_store_save(struct pa_store *store)
 	return err;
 }
 
-static void pa_store_to(struct uloop_timeout *to)
+static void pa_save_to(struct uloop_timeout *to)
 {
-	struct pa_store *store = container_of(to, struct pa_store, timer);
+	struct pa_store *store = container_of(to, struct pa_store, save_timer);
+	store->pending_changes = 0;
+	store->token_count--;
 	pa_store_save(store);
 }
 
-static void pa_store_updated(struct pa_store *store)
+void pa_token_to(struct uloop_timeout *to)
 {
-	if(!store->timer.pending)
-		uloop_timeout_set(&store->timer, PA_STORE_SAVE_DELAY);
+	struct pa_store *store = container_of(to, struct pa_store, token_timer);
+	if(store->token_count == PA_STORE_WTOKENS_MAX)
+		return;
+
+	store->token_count++;
+	if(store->pending_changes)
+		pa_store_updated(store);
+
+	uloop_timeout_set(to, store->token_delay);
+}
+
+void pa_store_updated(struct pa_store *store)
+{
+	store->pending_changes = 1;
+	if(store->filepath && store->token_count && !store->save_timer.pending) {
+		uloop_timeout_set(&store->save_timer, store->save_delay);
+	}
 }
 
 /* Only an empty private link can be destroyed */
@@ -296,7 +319,7 @@ void pa_store_link_remove(struct pa_store *store, struct pa_store_link *link)
 			list_del(&p->in_store);
 			free(p);
 		}
-		pa_store_updated(&store);
+		pa_store_updated(store);
 	}
 	return;
 }
@@ -315,18 +338,55 @@ void pa_store_term(struct pa_store *store)
 	}
 
 	pa_user_unregister(&store->user);
-	uloop_timeout_cancel(&store->timer);
+	uloop_timeout_cancel(&store->save_timer);
+	uloop_timeout_cancel(&store->token_timer);
 }
 
-int pa_store_set_file(struct pa_store *store, const char *filepath)
+int pa_store_set_file(struct pa_store *store, const char *filepath,
+		uint32_t save_delay, uint32_t token_delay)
 {
 	int fd;
-	if((fd = open(filepath, O_RDWR | O_CREAT, 0x00664)) == -1) {
+	uloop_timeout_cancel(&store->save_timer);
+	uloop_timeout_cancel(&store->token_timer);
+	if((fd = open(filepath, O_WRONLY | O_CREAT, 0x00664)) == -1) {
 		PA_WARNING("Could not open file (Or incorrect authorizations) %s: %s", filepath, strerror(errno));
 		store->filepath = NULL;
 		return -1;
 	}
+	close(fd);
+
+	uint32_t token_count = PA_STORE_WTOKENS_DEFAULT;
+	/* The file is read once to get the token counter. */
+	FILE *f;
+	if(!(f = fopen(filepath, "r"))) {
+		PA_WARNING("Cannot open file %s (read mode) - %s", store->filepath, strerror(errno));
+		return -1;
+	}
+	char *line = NULL;
+	ssize_t read;
+	size_t len;
+	while ((read = getline(&line, &len, f)) != -1) {
+		char *words[2];
+		pa_store_getwords(line, words, 2);
+		if(words[0] && !strcmp(words[0], PA_STORE_WTOKEN)) {
+			if(!words[1] || sscanf(words[1], "%"SCNu32, &token_count) != 1) {
+				PA_WARNING("Malformed token entry in file");
+				fclose(f);
+				return -1;
+			} else {
+				store->token_count = token_count;
+				break;
+			}
+		}
+	}
+	fclose(f);
+
+	store->token_count = token_count;
+	store->save_delay = save_delay;
+	store->token_delay = token_delay;
 	store->filepath = filepath;
+	store->pending_changes = 0;
+	uloop_timeout_set(&store->token_timer, store->token_delay);
 	return 0;
 }
 
@@ -341,7 +401,11 @@ void pa_store_init(struct pa_store *store, struct pa_core *core, uint32_t max_pr
 	store->user.published = NULL;
 	store->filepath = NULL;
 	store->n_prefixes = 0;
-	store->timer.pending = 0;
-	store->timer.cb = pa_store_to;
+	store->pending_changes = 0;
+	store->save_timer.pending = 0;
+	store->save_timer.cb = pa_save_to;
+	store->token_timer.pending = 0;
+	store->token_timer.cb = pa_token_to;
+	store->token_count = 0;
 	pa_user_register(core, &store->user);
 }

@@ -26,6 +26,7 @@ FILE *test_fopen(const char *path, const char *mode)
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 const char *test_open_pathname = NULL;
 int test_open_flags = 0;
@@ -63,10 +64,15 @@ int test_fclose(FILE *fp)
 	return fake_files?0:fclose(fp);
 }
 
+int test_close(int fd) {
+	return fake_files?0:close(fd);
+}
+
 #define fopen test_fopen
 #define fclose test_fclose
 #define open test_open
 #define getline test_getline
+#define close test_close
 
 #include "pa_store.c"
 
@@ -90,23 +96,23 @@ void pa_store_saveload_test()
 	const char *filepath = "/tmp/test_pa_core.store";
 	struct pa_store_prefix *prefix;
 	struct pa_store_link *link;
-
 	unlink(filepath);
 
 	fake_files = 1;
 
 	test_open_ret = 1;
-	pa_store_set_file(&store, filepath);
+	test_fopen_ret = (FILE *)1;
+	test_getline_n = 0;
+	test_getline_max = 0;
+	pa_store_set_file(&store, filepath, 1000, 1000);
 	sput_fail_if(strcmp(store.filepath, filepath), "Correct file path");
-
 	strcpy(test_getline_lines[0], "prefix link0 2001:0:0:100::/62");
 	strcpy(test_getline_lines[1], "prefix link1 2001:0:0:101::/63");
 	strcpy(test_getline_lines[2], "prefix link0 2001:0:0:102::/64");
 	strcpy(test_getline_lines[3], "prefix link1 2001:0:0:103::/65");
 	test_getline_n = 0;
 	test_getline_max = 4;
-	sput_fail_unless(pa_store_load(&store) == 0, "Can load virtual file");
-
+	sput_fail_unless(pa_store_load(&store, filepath) == 0, "Can load virtual file");
 
 	fake_files = 0;
 
@@ -116,16 +122,16 @@ void pa_store_saveload_test()
 	pa_store_init(&store, &core, 3);
 
 	chmod(filepath, 0);
-	sput_fail_unless(pa_store_set_file(&store, filepath), "Can't open file");
+	sput_fail_unless(pa_store_set_file(&store, filepath, 1000, 1000), "Can't open file");
 
 	chmod(filepath, S_IRUSR);
-	sput_fail_unless(pa_store_set_file(&store, filepath), "Can't open file");
+	sput_fail_unless(pa_store_set_file(&store, filepath, 1000, 1000), "Can't open file");
 
 	chmod(filepath, S_IRUSR | S_IWUSR);
-	sput_fail_if(pa_store_set_file(&store, filepath), "Can open file");
+	sput_fail_if(pa_store_set_file(&store, filepath, 1000, 1000), "Can open file");
 
 	sput_fail_if(strcmp(store.filepath, filepath), "Correct file path");
-	sput_fail_unless(pa_store_load(&store) == 0, "Can load virtual file");
+	sput_fail_unless(pa_store_load(&store, filepath) == 0, "Can load virtual file");
 
 	sput_fail_unless(store.n_prefixes == 3, "3 cached entries");
 
@@ -150,12 +156,12 @@ void pa_store_saveload_test()
 
 	//Load and save
 	sput_fail_if(pa_store_save(&store), "Store in file");
-	sput_fail_unless(pa_store_load(&store) == 0, "Can load virtual file");
+	sput_fail_unless(pa_store_load(&store, filepath) == 0, "Can load virtual file");
 	sput_fail_unless(store.n_prefixes == 3, "3 cached entries");
 
 	//Remove file and load again
 	unlink(filepath);
-	sput_fail_unless(pa_store_load(&store) == -1, "Cannot load virtual file");
+	sput_fail_unless(pa_store_load(&store, filepath) == -1, "Cannot load virtual file");
 
 	//Save again
 	sput_fail_if(pa_store_save(&store), "Store in file");
@@ -176,21 +182,26 @@ void pa_store_load_test()
 	fake_files = 1;
 	const char *filepath = "/file/path";
 
-	sput_fail_unless(pa_store_load(&store) == -1, "No specified file");
+	sput_fail_unless(pa_store_load(&store, filepath) == -1, "No specified file");
 
 	test_open_ret = -1;
-	pa_store_set_file(&store, filepath);
+	sput_fail_unless(pa_store_set_file(&store, filepath, 1000, 1000), "Can't set file");
 	sput_fail_if(store.filepath != NULL, "No file path");
 
-	test_open_ret = 1;
-	pa_store_set_file(&store, filepath);
+	test_open_ret = 0;
+	test_fopen_ret = (FILE *)1;
+	test_getline_n = 0;
+	test_getline_max = 0;
+	sput_fail_if(pa_store_set_file(&store, filepath, 1000, 1000), "Set file OK");
 	sput_fail_if(strcmp(store.filepath, filepath), "Correct file path");
 
 	test_fopen_ret = NULL;
-	sput_fail_unless(pa_store_load(&store) == -1, "Cannot load file");
+	sput_fail_unless(pa_store_load(&store, filepath) == -1, "Cannot load file");
 
 	test_fopen_ret = (FILE *)1;
-	sput_fail_unless(pa_store_load(&store) == 0, "Can load file");
+	test_getline_n = 0;
+	test_getline_max = 0;
+	sput_fail_unless(pa_store_load(&store, filepath) == 0, "Can load file");
 	sput_fail_unless(!strcmp(test_fopen_path, filepath), "Correct filepath");
 
 	strcpy(test_getline_lines[0], "#\n");
@@ -199,14 +210,14 @@ void pa_store_load_test()
 	strcpy(test_getline_lines[3], "#\n");
 	test_getline_n = 0;
 	test_getline_max = 4;
-	sput_fail_unless(pa_store_load(&store) == 0, "Can load file");
+	sput_fail_unless(pa_store_load(&store, filepath) == 0, "Can load file");
 	sput_fail_unless(test_getline_n == 4, "5 getline calls");
 
 #define pa_store_load_line(line, ret) do { \
 		test_getline_n = 0;\
 		test_getline_max = 1;\
 		strcpy(test_getline_lines[0], line);\
-		sput_fail_unless(pa_store_load(&store) == ret, "Load single line");\
+		sput_fail_unless(pa_store_load(&store, filepath) == ret, "Load single line");\
 		sput_fail_unless(test_getline_n == 1, "2 getline calls"); \
 	} while(0)
 
@@ -225,7 +236,6 @@ void pa_store_load_test()
 
 	struct pa_store_prefix *prefix;
 	struct pa_store_link *link;
-
 	pa_store_load_line("prefix link0 2001:0:0:100::/64", 0);
 	sput_fail_unless(store.n_prefixes == 1, "Correct number of prefixes");
 	prefix = list_entry(store.prefixes.next, struct pa_store_prefix, in_store);
@@ -258,7 +268,7 @@ void pa_store_load_test()
 	strcpy(test_getline_lines[3], "prefix link1 2001:0:0:101::/64\n");
 	test_getline_n = 0;
 	test_getline_max = 4;
-	sput_fail_unless(pa_store_load(&store) == 0, "Can load file");
+	sput_fail_unless(pa_store_load(&store, filepath) == 0, "Can load file");
 	sput_fail_unless(store.n_prefixes == 3, "3 prefixes");
 	prefix = list_entry(store.prefixes.next, struct pa_store_prefix, in_store);
 	sput_fail_if(pa_prefix_cmp(&prefix->prefix, prefix->plen, PP(1), 64), "Correct prefix");
