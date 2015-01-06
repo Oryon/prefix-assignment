@@ -417,3 +417,63 @@ void pa_store_init(struct pa_store *store, struct pa_core *core, uint32_t max_pr
 	store->token_count = 0;
 	pa_user_register(core, &store->user);
 }
+
+
+pa_rule_priority pa_store_get_max_priority(struct pa_rule *rule, struct pa_ldp *ldp)
+{
+	if(ldp->best_assignment || (ldp->valid && ldp->published))
+		return 0;
+
+	struct pa_store_rule *rule_s = container_of(rule, struct pa_store_rule, rule);
+	struct pa_store *store = rule_s->store;
+	struct pa_store_link *l;
+	list_for_each_entry(l, &store->links, le) {
+		if(l->link == ldp->link) {
+			if(l->n_prefixes)
+				return rule_s->rule_priority;
+			else
+				return 0;
+		}
+	}
+	return 0;
+}
+
+enum pa_rule_target pa_store_match(struct pa_rule *rule, struct pa_ldp *ldp,
+		__attribute__ ((unused)) pa_rule_priority best_match_priority,
+		struct pa_rule_arg *pa_arg)
+{
+	struct pa_store_rule *rule_s = container_of(rule, struct pa_store_rule, rule);
+	struct pa_store *store = rule_s->store;
+
+	pa_arg->priority = rule_s->priority;
+	pa_arg->rule_priority = rule_s->rule_priority;
+	//No need to check the best_match_priority because the rule uses a unique rule priority
+
+	struct pa_store_link *l;
+	list_for_each_entry(l, &store->links, le) {
+		if(l->link == ldp->link) //Will happen
+			break;
+	}
+
+	//Find a matching prefix
+	struct pa_store_prefix *prefix;
+	list_for_each_entry(prefix, &l->prefixes, in_link) {
+		if(prefix->plen >= ldp->dp->plen &&
+				pa_prefix_contains(&ldp->dp->prefix, ldp->dp->plen, &prefix->prefix)) {
+			if(!ldp->backoff)
+				return PA_RULE_BACKOFF; //Start or continue backoff timer.
+
+			pa_prefix_cpy(&prefix->prefix, prefix->plen, &pa_arg->prefix, pa_arg->plen);
+			return PA_RULE_PUBLISH;
+		}
+	}
+	return PA_RULE_NO_MATCH;
+}
+
+void pa_store_rule_init(struct pa_store_rule *rule, struct pa_store *store)
+{
+	rule->store = store;
+	rule->rule.filter_accept = NULL;
+	rule->rule.get_max_priority = pa_store_get_max_priority;
+	rule->rule.match = pa_store_match;
+}

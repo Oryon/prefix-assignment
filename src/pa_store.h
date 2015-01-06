@@ -150,7 +150,7 @@ struct pa_store_rule {
 	pa_priority priority;
 };
 
-void pa_store_rule_init(struct pa_store_rule *rule);
+void pa_store_rule_init(struct pa_store_rule *rule, struct pa_store *store);
 
 
 
