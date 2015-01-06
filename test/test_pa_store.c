@@ -37,7 +37,7 @@ int test_open(const char *pathname, int flags, mode_t mode)
 	test_open_pathname = pathname;
 	test_open_flags = flags;
 	test_open_mode = mode;
-	return fake_files?test_open_ret:open(pathname,flags);
+	return fake_files?test_open_ret:open(pathname,flags, mode);
 }
 
 char test_getline_lines[30][200];
@@ -84,6 +84,84 @@ static struct in6_addr v4 = {{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}}};
 #define PP(i) (p.s6_addr[7] = i, &p)
 #define PP4(i, u) (v4.s6_addr[12] = i, v4.s6_addr[13] = u, &v4)
 
+void pa_store_delays_test()
+{
+	fu_init();
+	struct pa_core core;
+	INIT_LIST_HEAD(&core.users);
+
+	struct pa_store store;
+	pa_store_init(&store, &core, 4);
+
+	fake_files = 0;
+	const char *filepath = "/tmp/test_pa_core.store";
+	unlink(filepath);
+	sput_fail_if(pa_store_set_file(&store, filepath, 2000, 10000), "Could open file");
+	sput_fail_unless(store.save_delay = 2000, "Correct save delay");
+	sput_fail_unless(store.token_delay = 10000, "Correct token delay");
+	sput_fail_unless(store.token_count = PA_STORE_WTOKENS_DEFAULT, "Default number of tokens");
+	sput_fail_unless(uloop_timeout_remaining(&store.token_timer) == 10000, "Token timer pending");
+	sput_fail_unless(!store.save_timer.pending, "Store timer not pending");
+
+	fu_loop(1);
+	sput_fail_unless(store.token_count == PA_STORE_WTOKENS_DEFAULT+1, "One more token");
+	store.token_count = 0;
+
+	struct pa_link l;
+	struct pa_dp d;
+	struct pa_ldp ldp;
+	ldp.link = &l;
+	ldp.dp = &d;
+	ldp.prefix = PV(0);
+	ldp.plen = 64;
+	ldp.assigned = 0;
+	ldp.applied = 1;
+
+	struct pa_store_link link;
+	pa_store_link_init(&link, &l, "L1", 2);
+	pa_store_link_add(&store, &link);
+
+	store.user.applied(&store.user, &ldp);
+	sput_fail_unless(store.n_prefixes == 1, "One prefixes");
+
+	sput_fail_unless(uloop_timeout_remaining(&store.token_timer) == 10000, "Token timer pending");
+	sput_fail_unless(!store.save_timer.pending, "Store timer not pending");
+
+	fu_loop(1);
+	sput_fail_unless(store.token_count == 1, "One token");
+	sput_fail_unless(uloop_timeout_remaining(&store.save_timer) == 2000, "Store timer pending");
+
+	fu_loop(1);
+	sput_fail_unless(store.token_count == 0, "No token left");
+	sput_fail_unless(uloop_timeout_remaining(&store.token_timer) == 8000, "Token timer pending");
+
+	store.user.applied(&store.user, &ldp); //Update, but no token
+
+	fu_loop(1);
+	sput_fail_unless(uloop_timeout_remaining(&store.token_timer) == 10000, "Token timer pending");
+	sput_fail_unless(uloop_timeout_remaining(&store.save_timer) == 2000, "Store timer pending");
+
+	fu_loop(1);
+	sput_fail_unless(store.token_count == 0, "No token left");
+
+	store.token_count = 2;
+	sput_fail_if(pa_store_set_file(&store, filepath, 3000, 11000), "Could open file");
+	sput_fail_unless(store.token_count == 0, "No more tokens");
+
+	fu_loop(3);//3 more tokens
+	sput_fail_unless(store.token_count == 3, "3 tokens");
+
+	store.user.applied(&store.user, &ldp);
+	sput_fail_unless(uloop_timeout_remaining(&store.save_timer) == 3000, "Store timer pending");
+	fu_loop(1); //Write to file
+
+	store.token_count = 10;
+	sput_fail_if(pa_store_set_file(&store, filepath, 2000, 10000), "Could open file");
+	sput_fail_unless(store.token_count == 2, "2 tokens");
+
+	unlink(filepath);
+	pa_store_term(&store);
+}
 
 void pa_store_saveload_test()
 {
@@ -132,7 +210,6 @@ void pa_store_saveload_test()
 
 	sput_fail_if(strcmp(store.filepath, filepath), "Correct file path");
 	sput_fail_unless(pa_store_load(&store, filepath) == 0, "Can load virtual file");
-
 	sput_fail_unless(store.n_prefixes == 3, "3 cached entries");
 
 
@@ -536,6 +613,7 @@ int main() {
 	sput_run_test(pa_store_cache_test);
 	sput_run_test(pa_store_load_test);
 	sput_run_test(pa_store_saveload_test);
+	sput_run_test(pa_store_delays_test);
 	sput_leave_suite(); /* optional */
 	sput_finish_testing();
 	return sput_get_return_value();

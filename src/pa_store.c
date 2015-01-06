@@ -120,6 +120,9 @@ int pa_store_load(struct pa_store *store, const char *filepath)
 			PAS_PE(strlen(words[1]) >= PA_STORE_NAMELEN, "Link name '%s' is too long", words[1]);
 			PAS_PE(!(l = pa_store_link_goc(store, words[1], 1)), "Internal error");
 			pa_store_cache(store, l, &px, plen);
+		} else if(!strcmp(words[0], PA_STORE_WTOKEN)) {
+			uint32_t token_count;
+			PAS_PE(!words[1] || sscanf(words[1], "%"SCNu32, &token_count) != 1, "Invalid token count");
 		} else {
 			PAS_PE(1,"Unknown type %s", words[0]);
 		}
@@ -152,6 +155,11 @@ int pa_store_save(struct pa_store *store)
 	struct pa_store_link *link;
 	char px[PA_PREFIX_STRLEN];
 	int err = 0;
+
+	if(fprintf(f, PA_STORE_WTOKEN" %"PRIu32"\n", store->token_count) < 0) {
+		err = -3;
+	}
+
 	list_for_each_entry_reverse(p, &store->prefixes, in_store) {
 		link = list_entry(p->in_link.next, struct pa_store_link, prefixes);
 		if(!strlen(link->name))
@@ -161,7 +169,7 @@ int pa_store_save(struct pa_store *store)
 			if(fprintf(f, PA_STORE_PREFIX" %s %s\n",
 					link->name,
 					pa_prefix_tostring(px, &p->prefix, p->plen)) < 0)
-				err = 1;
+				err = -2;
 		}
 		list_move(&p->in_link, &link->prefixes);
 	}
@@ -189,7 +197,6 @@ void pa_token_to(struct uloop_timeout *to)
 	store->token_count++;
 	if(store->pending_changes)
 		pa_store_updated(store);
-
 	uloop_timeout_set(to, store->token_delay);
 }
 
@@ -348,7 +355,7 @@ int pa_store_set_file(struct pa_store *store, const char *filepath,
 	int fd;
 	uloop_timeout_cancel(&store->save_timer);
 	uloop_timeout_cancel(&store->token_timer);
-	if((fd = open(filepath, O_WRONLY | O_CREAT, 0x00664)) == -1) {
+	if((fd = open(filepath, O_WRONLY | O_CREAT, 0664)) == -1) {
 		PA_WARNING("Could not open file (Or incorrect authorizations) %s: %s", filepath, strerror(errno));
 		store->filepath = NULL;
 		return -1;
@@ -359,7 +366,7 @@ int pa_store_set_file(struct pa_store *store, const char *filepath,
 	/* The file is read once to get the token counter. */
 	FILE *f;
 	if(!(f = fopen(filepath, "r"))) {
-		PA_WARNING("Cannot open file %s (read mode) - %s", store->filepath, strerror(errno));
+		PA_WARNING("Cannot open file %s (read mode) - %s", filepath, strerror(errno));
 		return -1;
 	}
 	char *line = NULL;
