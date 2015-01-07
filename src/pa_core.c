@@ -50,13 +50,6 @@ const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
 		} \
 	} while(0)
 
-#define pa_ldp_set_applied(pa_ldp, p) do {\
-	if((pa_ldp)->applied != p) { \
-		PA_DEBUG("%s "PA_LDP_P, (p)?"Applying":"Un-Applying ",PA_LDP_PA(ldp)); \
-		(pa_ldp)->applied = p; \
-		pa_user_notify(pa_ldp, applied); \
-	} }while(0)
-
 #define pa_routine_schedule(ldp) do { \
 	if(!(ldp)->routine_to.pending) \
 		uloop_timeout_set(&(ldp)->routine_to, PA_RUN_DELAY); }while(0)
@@ -83,6 +76,23 @@ int pa_prefix_available(struct pa_core *core, pa_prefix *prefix, pa_plen plen,
 		}
 	}
 	return 1;
+}
+
+static void pa_ldp_apply(struct pa_ldp *ldp)
+{
+	if(ldp->applied)
+		return;
+
+#ifdef PA_HIERARCHICAL
+	if(ldp->dp->ha_ldp && !ldp->dp->ha_ldp->applied) {
+		//Wait for the higher-level prefix to be applied
+		ldp->ha_apply_pending = 1;
+		return;
+	}
+#endif
+
+	ldp->applied = 1;
+	pa_user_notify(ldp, applied);
 }
 
 static void pa_ldp_unpublish(struct pa_ldp *ldp, bool cancel_apply)
@@ -168,7 +178,14 @@ static void pa_ldp_unassign(struct pa_ldp *ldp)
 	if(!ldp->assigned)
 		return;
 
-	pa_ldp_set_applied(ldp, 0);
+#ifdef PA_HIERARCHICAL
+	ldp->ha_apply_pending = 0;
+#endif
+	if(ldp->applied) {
+		ldp->applied = 0;
+		pa_user_notify(ldp, applied);
+	}
+
 	pa_ldp_unpublish(ldp, 1);
 	pa_ldp_unadopt(ldp);
 	uloop_timeout_cancel(&ldp->backoff_to);
@@ -424,7 +441,7 @@ static void pa_backoff_to(struct uloop_timeout *to)
 	if(ldp->adopting) { //Adopt timeout
 		pa_ldp_publish(ldp, ldp->rule, ldp->priority, ldp->rule_priority);
 	} else if(ldp->assigned) { //Apply timeout
-		pa_ldp_set_applied(ldp, 1);
+		pa_ldp_apply(ldp);
 	} else { //Backoff delay
 		pa_routine(ldp, true);
 	}
@@ -682,53 +699,91 @@ void pa_core_init(struct pa_core *core)
  * Hierarchical Assignment *
  ***************************/
 
-static void pa_ha_applied_cb(struct pa_user *user, struct pa_ldp *ldp)
+static struct pa_dp *pa_ha_dp_get(struct pa_core *core, struct pa_ldp *ldp)
 {
-	struct pa_core *core = container_of(user, struct pa_core, ha_user);
-	struct pa_dp *dp, *find;
-	dp = NULL;
-	pa_for_each_dp(core, find) {
-		if(find->ha_ldp == ldp) {
-			dp = find;
-			break;
+	struct pa_dp *dp = NULL;
+	pa_for_each_dp(core, dp) {
+		if(dp->ha_ldp == ldp) {
+			return dp;
 		}
 	}
+	return NULL;
+}
 
-	if(ldp->applied) {
-		if(dp) {
-			PA_WARNING("The applied prefix is already associated with a lower-level dp.");
-			return;
-		}
-
-		if(!(dp = malloc(sizeof(struct pa_dp)))) {
-			PA_WARNING("Cannot create lower-level dp for "PA_LDP_P, PA_LDP_PA(ldp));
-			return;
-		}
-
-		/* init dp */
-		pa_prefix_cpy(&ldp->prefix, ldp->plen, &dp->prefix, dp->plen);
-		dp->ha_ldp = ldp;
-#ifdef PA_DP_TYPE
-		dp->type = PA_DP_TYPE_NONE;
-#endif
-
-		/* Add the dp to the child PA structure */
-		pa_dp_add(core, dp);
+static void pa_ha_dp_del(struct pa_core *core, struct pa_ldp *ldp)
+{
+	struct pa_dp *dp = pa_ha_dp_get(core, ldp);
+	if(!dp) {
+		PA_WARNING("The higher-level prefix is not associated with a lower-level dp.");
 	} else {
-		if(!dp) {
-			PA_WARNING("The un-applied prefix should be associated with a lower-level dp, but is not...");
-			return;
-		}
-
 		pa_dp_del(dp);
 		free(dp);
 	}
 }
 
-void pa_ha_attach(struct pa_core *child, struct pa_core *parent)
+static void pa_ha_dp_add(struct pa_core *core, struct pa_ldp *ldp)
 {
-	child->ha_user.applied = pa_ha_applied_cb;
-	child->ha_user.assigned = NULL;
+	struct pa_dp *dp = pa_ha_dp_get(core, ldp);
+	if(dp) {
+		PA_WARNING("The higher-level ldp is already associated with a lower-level dp.");
+		return;
+	}
+	if(!(dp = malloc(sizeof(struct pa_dp)))) {
+		PA_WARNING("Cannot create lower-level dp for "PA_LDP_P, PA_LDP_PA(ldp));
+		return;
+	}
+
+	/* init dp */
+	pa_prefix_cpy(&ldp->prefix, ldp->plen, &dp->prefix, dp->plen);
+	dp->ha_ldp = ldp;
+#ifdef PA_DP_TYPE
+	dp->type = PA_DP_TYPE_NONE;
+#endif
+
+	/* Add the dp to the child PA structure */
+	pa_dp_add(core, dp);
+}
+
+static void pa_ha_assigned_cb(struct pa_user *user, struct pa_ldp *ldp)
+{
+	struct pa_core *core = container_of(user, struct pa_core, ha_user);
+	if(ldp->assigned) {
+		pa_ha_dp_add(core, ldp);
+	} else {
+		pa_ha_dp_del(core, ldp);
+	}
+}
+
+static void pa_ha_applied_cb(struct pa_user *user, struct pa_ldp *ldp)
+{
+	struct pa_core *core = container_of(user, struct pa_core, ha_user);
+	if(core->ha_user.assigned) {
+		//Fast mode
+		struct pa_dp *dp = pa_ha_dp_get(core, ldp);
+		if(!dp)
+			return;
+
+		if(ldp->applied) {
+			pa_for_each_ldp_in_dp(dp, ldp) {
+				if(!ldp->applied && ldp->ha_apply_pending)
+					pa_ldp_apply(ldp);
+			}
+		}
+		//A prefix is only unapplied when unassigned
+	} else {
+		//Safe mode
+		if(ldp->applied) {
+			pa_ha_dp_add(core, ldp);
+		} else {
+			pa_ha_dp_del(core, ldp);
+		}
+	}
+}
+
+void pa_ha_attach(struct pa_core *child, struct pa_core *parent, uint8_t fast_assignment)
+{
+	child->ha_user.applied = NULL;
+	child->ha_user.assigned = fast_assignment?pa_ha_assigned_cb:NULL;
 	child->ha_user.published = NULL;
 	child->ha_parent = parent;
 

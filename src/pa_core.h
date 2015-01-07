@@ -226,6 +226,9 @@ struct pa_ldp {
 	uint8_t adopting  : 1;          /* The Assigned Prefix will be adopted (Only set during backoff). */
 	uint8_t valid     : 1;          /* (in routine) Whether the routine will destroy the Assigned Prefix. */
 	uint8_t backoff   : 1;          /* (in routine) The routine is executed following backoff timeout. */
+#ifdef PA_HIERARCHICAL
+	uint8_t ha_apply_pending : 1;   /* The prefix may be applied, but it is waiting for higher-level prefix to be applied too. */
+#endif /* PA_HIERARCHICAL */
 	pa_prefix prefix;               /* (if assigned) The Assigned Prefix. */
 	pa_plen plen;                   /* (if assigned) The Assigned Prefix length. */
 	pa_priority priority;           /* (if published) The Advertised Prefix Priority. */
@@ -408,8 +411,11 @@ int pa_prefix_available(struct pa_core *, pa_prefix *prefix, pa_plen plen,
  ***************************/
 
 /* Sets a pa_core structure as hierarchically lower than the parent.
- * Both must have been initialized. */
-void pa_ha_attach(struct pa_core *child, struct pa_core *parent);
+ * Both must have been initialized.
+ * When fast_assignment is set, sub-prefixes may be assigned (but not applied) before
+ * higher level prefixes are applied. */
+void pa_ha_attach(struct pa_core *child, struct pa_core *parent,
+		uint8_t fast_assignment);
 
 /* Removes the parent of the pa structure. */
 void pa_ha_detach(struct pa_core *child);
