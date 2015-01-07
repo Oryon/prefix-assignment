@@ -90,12 +90,11 @@ void pa_store_rule_test()
 	fake_files = 0;
 
 	struct pa_core core;
-	struct pa_link l1, l2;
-	l1.name = "link1";
-	l2.name = "link2";
+	struct pa_link
+			l1 = {.name = "link1"},
+			l2 = {.name = "link2"};
 
-	struct pa_dp dp;
-	pa_prefix_cpy(PP(0), 56, &dp.prefix, dp.plen);
+	struct pa_dp dp = {.prefix = PV(0), .plen = 56};
 
 	core.node_id[0] = 5;
 	pa_core_init(&core);

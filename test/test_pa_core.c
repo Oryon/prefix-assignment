@@ -132,7 +132,8 @@ struct test_rule {
 	struct pa_rule_arg arg;    //arg returned by match
 };
 
-static int test_rule_filter_accept(struct pa_rule *rule, struct pa_ldp *ldp, void *p)
+static int test_rule_filter_accept(struct pa_rule *rule,
+		__attribute__ ((unused)) struct pa_ldp *ldp, void *p)
 {
 	struct test_rule *t = container_of(rule, struct test_rule, rule);
 	t->filter_p = p;

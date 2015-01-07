@@ -482,7 +482,7 @@ static void _pa_dp_del(struct pa_dp *dp)
 
 	//Private part (so the whole deletion is atomic for users)
 	pa_for_each_ldp_in_dp_safe(dp, ldp, ldp2)
-	pa_ldp_destroy(ldp);
+		pa_ldp_destroy(ldp);
 	list_del(&dp->le);
 }
 
@@ -499,6 +499,13 @@ int pa_dp_add(struct pa_core *core, struct pa_dp *dp)
 	list_add(&dp->le, &core->dps);
 	struct pa_link *link;
 	pa_for_each_link(core, link) {
+#ifdef PA_HIERARCHICAL
+		/* If dp is from higher level and the link is the child of a higher level link.
+		 * Compare the two links.  */
+		if(dp->ha_ldp && link->ha_parent && link->ha_parent != dp->ha_ldp->link)
+			continue;
+#endif
+
 		if(pa_ldp_create(core, link, dp)) {
 			PA_WARNING("FAILED to add Delegated Prefix "PA_DP_P, PA_DP_PA(dp));
 			_pa_dp_del(dp);
@@ -535,6 +542,12 @@ int pa_link_add(struct pa_core *core, struct pa_link *link)
 	list_add(&link->le, &core->links);
 	struct pa_dp *dp;
 	pa_for_each_dp(core, dp) {
+#ifdef PA_HIERARCHICAL
+		/* If dp is from higher level and the link is the child of a higher level link.
+		 * Compare the two links.  */
+		if(dp->ha_ldp && link->ha_parent && link->ha_parent != dp->ha_ldp->link)
+			continue;
+#endif
 		if(pa_ldp_create(core, link, dp)) {
 			PA_WARNING("FAILED to add Link "PA_LINK_P, PA_LINK_PA(link));
 			_pa_link_del(link);
@@ -658,4 +671,93 @@ void pa_core_init(struct pa_core *core)
 	btrie_init(&core->prefixes);
 	memset(core->node_id, 0, PA_NODE_ID_LEN);
 	core->flooding_delay = PA_DEFAULT_FLOODING_DELAY;
+#ifdef PA_HIERARCHICAL
+	core->ha_parent = NULL;
+#endif
 }
+
+
+#ifdef PA_HIERARCHICAL
+/***************************
+ * Hierarchical Assignment *
+ ***************************/
+
+static void pa_ha_applied_cb(struct pa_user *user, struct pa_ldp *ldp)
+{
+	struct pa_core *core = container_of(user, struct pa_core, ha_user);
+	struct pa_dp *dp, *find;
+	dp = NULL;
+	pa_for_each_dp(core, find) {
+		if(find->ha_ldp == ldp) {
+			dp = find;
+			break;
+		}
+	}
+
+	if(ldp->applied) {
+		if(dp) {
+			PA_WARNING("The applied prefix is already associated with a lower-level dp.");
+			return;
+		}
+
+		if(!(dp = malloc(sizeof(struct pa_dp)))) {
+			PA_WARNING("Cannot create lower-level dp for "PA_LDP_P, PA_LDP_PA(ldp));
+			return;
+		}
+
+		/* init dp */
+		pa_prefix_cpy(&ldp->prefix, ldp->plen, &dp->prefix, dp->plen);
+		dp->ha_ldp = ldp;
+#ifdef PA_DP_TYPE
+		dp->type = PA_DP_TYPE_NONE;
+#endif
+
+		/* Add the dp to the child PA structure */
+		pa_dp_add(core, dp);
+	} else {
+		if(!dp) {
+			PA_WARNING("The un-applied prefix should be associated with a lower-level dp, but is not...");
+			return;
+		}
+
+		pa_dp_del(dp);
+		free(dp);
+	}
+}
+
+void pa_ha_attach(struct pa_core *child, struct pa_core *parent)
+{
+	child->ha_user.applied = pa_ha_applied_cb;
+	child->ha_user.assigned = NULL;
+	child->ha_user.published = NULL;
+	child->ha_parent = parent;
+
+	/* Attach to parent */
+	pa_user_register(parent, &child->ha_user);
+
+	/* Update dps from parent's applied ldps */
+	struct pa_dp *dp;
+	struct pa_ldp *ldp;
+	pa_for_each_dp(parent, dp)
+		pa_for_each_ldp_in_dp(dp, ldp)
+			if(ldp->applied)
+				pa_ha_applied_cb(&child->ha_user, ldp);
+}
+
+void pa_ha_detach(struct pa_core *child)
+{
+	/* Remove all dps that are from the parent. */
+	struct pa_dp *dp;
+	pa_for_each_dp(child, dp) {
+		if(dp->ha_ldp) {
+			pa_dp_del(dp);
+			free(dp);
+		}
+	}
+
+	/* Detach from parent */
+	child->ha_parent = NULL;
+	pa_user_unregister(&child->ha_user);
+}
+
+#endif

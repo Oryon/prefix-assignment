@@ -69,6 +69,46 @@ extern const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s);
 #define pa_prefix_overlap(p1, plen1, p2, plen2) ((plen1 > plen2)?pa_prefix_contains(p2, plen2, p1):pa_prefix_contains(p1, plen1, p2))
 #define pa_prefix_repr(p, plen) pa_prefix_tostring(alloca(PA_PREFIX_STRLEN), p, plen)
 
+struct pa_ldp;
+
+/***************************
+ *         User API        *
+ ***************************/
+
+struct pa_user {
+	struct list_head le; /* Linked in pa_core. */
+
+	/* These callbacks are called when the assigned, published
+	 * and applied values are changed. They are not called
+	 * when a Link/DP is created.
+	 * When switched to 0, associated values are still present.
+	 * i.e. the prefix and plen are valid when assigned == 0
+	 * i.e. the priorities and rule are still valid when published == 0 */
+	void (*assigned)(struct pa_user *, struct pa_ldp *);
+	void (*published)(struct pa_user *, struct pa_ldp *);
+	void (*applied)(struct pa_user *, struct pa_ldp *);
+};
+
+/* pa_user print format and argument */
+#define PA_USER_P "%p - %d:%d:%d"
+#define PA_USER_PA(pa_user) pa_user, (pa_user)->assigned, (pa_user)->published, (pa_user)->applied
+
+/* Adds a user which will receive events callback.
+ * When added, the user does not receive callbacks for existing prefixes. */
+#define pa_user_register(core, user) list_add(&(user)->le, &(core)->users)
+
+/* Unregister a user. */
+#define pa_user_unregister(user) list_del(&(user)->le)
+
+#define pa_for_each_link(pa_core, pa_link) list_for_each_entry(pa_link, &(pa_core)->links, le)
+
+#define pa_for_each_ldp_in_link(pa_link, pa_ldp) list_for_each_entry(pa_ldp, &(pa_link)->ldps, in_link)
+
+#define pa_for_each_dp(pa_core, pa_dp) list_for_each_entry(pa_dp, &(pa_core)->dps, le)
+
+#define pa_for_each_ldp_in_dp(pa_dp, pa_ldp) list_for_each_entry(pa_ldp, &(pa_dp)->ldps, in_dp)
+
+
 /***************************
  *       Generic API       *
  ***************************/
@@ -82,6 +122,10 @@ struct pa_core {
 	struct list_head links;
 	struct list_head dps;
 	struct list_head rules;
+#ifdef PA_HIERARCHICAL
+	struct pa_core *ha_parent;       /* When not-null, points to the parent pa_core structure. */
+	struct pa_user ha_user;          /* When a parent is associated, this is a user of the higher level pa_core algo. */
+#endif /* PA_HIERARCHICAL */
 };
 
 /* Initializes a pa_core structure.
@@ -114,6 +158,11 @@ struct pa_link {
 #ifdef PA_LINK_TYPE
 	uint8_t type;           /* Link type identifier provided by user. */
 #endif
+#ifdef PA_HIERARCHICAL
+	/* For any dp, if (link->ha_parent && dp->ha_parent && (dp->ha_parent->link != ha_parent)),
+	 * no associated ldp is created (and thus no assigned prefix is ever created). */
+	struct pa_link *ha_parent;
+#endif /* PA_HIERARCHICAL */
 };
 
 /* Link print format and arguments. */
@@ -134,6 +183,11 @@ struct pa_dp {
 	pa_plen plen;           /* The prefix length. */
 #ifdef PA_DP_TYPE
 	uint8_t type;           /* Delegated Prefix type identifier provided by user. */
+#endif
+#ifdef PA_HIERARCHICAL
+	/* When not-null, the dp is actually an ldp assigned to an higher-level link.
+	 * It must be set to NULL by most users. */
+	struct pa_ldp *ha_ldp;
 #endif
 };
 
@@ -216,44 +270,6 @@ void pa_advp_del(struct pa_core *, struct pa_advp *);
 
 /* Notify that the content of the Advertised Prefix was changes. */
 void pa_advp_update(struct pa_core *, struct pa_advp *);
-
-
-/***************************
- *         User API        *
- ***************************/
-
-struct pa_user {
-	struct list_head le; /* Linked in pa_core. */
-
-	/* These callbacks are called when the assigned, published
-	 * and applied values are changed. They are not called
-	 * when a Link/DP is created.
-	 * When switched to 0, associated values are still present.
-	 * i.e. the prefix and plen are valid when assigned == 0
-	 * i.e. the priorities and rule are still valid when published == 0 */
-	void (*assigned)(struct pa_user *, struct pa_ldp *);
-	void (*published)(struct pa_user *, struct pa_ldp *);
-	void (*applied)(struct pa_user *, struct pa_ldp *);
-};
-
-/* pa_user print format and argument */
-#define PA_USER_P "%p - %d:%d:%d"
-#define PA_USER_PA(pa_user) pa_user, (pa_user)->assigned, (pa_user)->published, (pa_user)->applied
-
-/* Adds a user which will receive events callback.
- * When added, the user does not receive callbacks for existing prefixes. */
-#define pa_user_register(core, user) list_add(&(user)->le, &(core)->users)
-
-/* Unregister a user. */
-#define pa_user_unregister(user) list_del(&(user)->le)
-
-#define pa_for_each_link(pa_core, pa_link) list_for_each_entry(pa_link, &(pa_core)->links, le)
-
-#define pa_for_each_ldp_in_link(pa_link, pa_ldp) list_for_each_entry(pa_ldp, &(pa_link)->ldps, in_link)
-
-#define pa_for_each_dp(pa_core, pa_dp) list_for_each_entry(pa_dp, &(pa_core)->dps, le)
-
-#define pa_for_each_ldp_in_dp(pa_dp, pa_ldp) list_for_each_entry(pa_ldp, &(pa_dp)->ldps, in_dp)
 
 
 /***************************
@@ -385,5 +401,20 @@ void pa_rule_del(struct pa_core *, struct pa_rule *);
 int pa_prefix_available(struct pa_core *, pa_prefix *prefix, pa_plen plen,
 		pa_rule_priority ldp_override, pa_priority adv_override);
 
+
+#ifdef PA_HIERARCHICAL
+/***************************
+ * Hierarchical Assignment *
+ ***************************/
+
+/* Sets a pa_core structure as hierarchically lower than the parent.
+ * Both must have been initialized. */
+void pa_ha_attach(struct pa_core *child, struct pa_core *parent);
+
+/* Removes the parent of the pa structure. */
+void pa_ha_detach(struct pa_core *child);
+
+
+#endif
 
 #endif /* PA_CORE_H_ */

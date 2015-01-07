@@ -73,6 +73,23 @@
 		prefix_ntopc(buff, PA_PREFIX_STRLEN, p, plen)
 
 
+/**********************************
+ *    Hierarchical Assignments    *
+ **********************************/
+
+/* Hierarchical prefix assignment allows
+ * links to be associated in a tree structure.
+ * Prefixes Assigned and Applied on a given link
+ * become Delegated Prefixes for links that are
+ * below in the Link hierarchy.
+ * Each hierarchy level makes use of a different
+ * PA instance. Lower-level instances are users of
+ * higher level instances.
+ *
+ * Hierarchical prefix assignment is enabled
+ * by defining PA_HIERARCHICAL
+ */
+#define PA_HIERARCHICAL
 
 /**********************************
  *         Timing Values          *
@@ -148,7 +165,10 @@
  *    (Optional) */
 #define PA_DP_TYPE
 
-
+#ifdef PA_DP_TYPE
+/* Reserved for dps that have no type associated */
+#define PA_DP_TYPE_NONE 0
+#endif
 
 /**********************************
  *     Prefix Assignment Rules    *
