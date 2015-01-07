@@ -449,6 +449,7 @@ enum pa_rule_target pa_store_match(struct pa_rule *rule, struct pa_ldp *ldp,
 	pa_arg->rule_priority = rule_s->rule_priority;
 	//No need to check the best_match_priority because the rule uses a unique rule priority
 
+	/* We checked that there is a candidate during get_max_priority call */
 	struct pa_store_link *l;
 	list_for_each_entry(l, &store->links, le) {
 		if(l->link == ldp->link) //Will happen
@@ -459,7 +460,8 @@ enum pa_rule_target pa_store_match(struct pa_rule *rule, struct pa_ldp *ldp,
 	struct pa_store_prefix *prefix;
 	list_for_each_entry(prefix, &l->prefixes, in_link) {
 		if(prefix->plen >= ldp->dp->plen &&
-				pa_prefix_contains(&ldp->dp->prefix, ldp->dp->plen, &prefix->prefix)) {
+				pa_prefix_contains(&ldp->dp->prefix, ldp->dp->plen, &prefix->prefix) &&
+				pa_prefix_available(ldp->core, &prefix->prefix, prefix->plen, 0, 0)) {
 			if(!ldp->backoff)
 				return PA_RULE_BACKOFF; //Start or continue backoff timer.
 

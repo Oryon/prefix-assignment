@@ -374,4 +374,16 @@ struct pa_rule {
 void pa_rule_add(struct pa_core *, struct pa_rule *);
 void pa_rule_del(struct pa_core *, struct pa_rule *);
 
+
+/***************************
+ *   Utility Functions     *
+ ***************************/
+
+/* Checks whether a prefix is not
+ * - published or adopted in any ldp with rule priority higher or equal to ldp_override.
+ * - advertised in any advp with a adv. priority higher or equal to adv_override. */
+int pa_prefix_available(struct pa_core *, pa_prefix *prefix, pa_plen plen,
+		pa_rule_priority ldp_override, pa_priority adv_override);
+
+
 #endif /* PA_CORE_H_ */

@@ -64,6 +64,27 @@ const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
 #define PA_ADOPT_DELAY_r(ldp) (pa_rand() % PA_ADOPT_DELAY)
 #define PA_BACKOFF_DELAY_r(ldp) (PA_ADOPT_DELAY + pa_rand() % (PA_BACKOFF_DELAY - PA_ADOPT_DELAY))
 
+
+int pa_prefix_available(struct pa_core *core, pa_prefix *prefix, pa_plen plen,
+		pa_rule_priority ldp_override, pa_priority adv_override)
+{
+	struct pa_pentry *p;
+	struct pa_advp *advp;
+	struct pa_ldp *ldp;
+	btrie_for_each_updown_entry(p, &core->prefixes, (btrie_key_t *)prefix, plen, be) {
+		if(p->type == PAT_ASSIGNED) {
+			ldp = container_of(p, struct pa_ldp, in_core);
+			if((ldp->published || ldp->adopting) && ldp->rule_priority >= ldp_override)
+				return 0;
+		} else if (p->type == PAT_ADVERTISED) {
+			advp = container_of(p, struct pa_advp, in_core);
+			if(advp->priority >= adv_override)
+				return 0;
+		}
+	}
+	return 1;
+}
+
 static void pa_ldp_unpublish(struct pa_ldp *ldp, bool cancel_apply)
 {
 	if(!ldp->published)
@@ -331,6 +352,9 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 			break;
 		case PA_RULE_BACKOFF:
 			PA_DEBUG("Target: Backoff");
+			//Unassign if assigned.
+			//Backoff only makes sense for not applied ldps
+			pa_ldp_unassign(ldp);
 			//If already pending, we can keep waiting.
 			if(!ldp->backoff_to.pending)
 				uloop_timeout_set(&ldp->backoff_to, PA_BACKOFF_DELAY_r(ldp));

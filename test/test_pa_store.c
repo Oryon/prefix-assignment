@@ -5,9 +5,9 @@
 
 #define TEST_DEBUG(format, ...) printf("TEST Debug   : "format"\n", ##__VA_ARGS__)
 
-
-
 #include "fake_uloop.h"
+
+#include "pa_core.c"
 
 /* Fake file handling */
 int fake_files = 0;
@@ -83,6 +83,114 @@ static struct in6_addr v4 = {{{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xff, 0xff}}};
 #define PV(i) (p.s6_addr[7] = i, p)
 #define PP(i) (p.s6_addr[7] = i, &p)
 #define PP4(i, u) (v4.s6_addr[12] = i, v4.s6_addr[13] = u, &v4)
+
+void pa_store_rule_test()
+{
+	fu_init();
+	fake_files = 0;
+
+	struct pa_core core;
+	struct pa_link l1, l2;
+	l1.name = "link1";
+	l2.name = "link2";
+
+	struct pa_dp dp;
+	pa_prefix_cpy(PP(0), 56, &dp.prefix, dp.plen);
+
+	core.node_id[0] = 5;
+	pa_core_init(&core);
+	pa_link_add(&core, &l1);
+	pa_link_add(&core, &l2);
+	pa_dp_add(&core, &dp);
+
+	struct pa_ldp *ldp1, *ldp2;
+	ldp1 = list_entry(l1.ldps.next, struct pa_ldp, in_link);
+	ldp2 = list_entry(l2.ldps.next, struct pa_ldp, in_link);
+
+	struct pa_store store;
+	pa_store_init(&store, &core, 10);
+
+	struct pa_store_link ls1, ls2;
+	ls1.link = &l1;
+	strcpy(ls1.name, "stored_link1");
+	ls2.link = &l2;
+	strcpy(ls2.name, "stored_link2");
+
+	fu_loop(2);//Execute for the two ldps.
+
+	sput_fail_if(ldp1->assigned, "No prefix on link");
+	sput_fail_if(ldp2->assigned, "No prefix on link");
+
+	struct pa_advp a1, a2;
+	pa_prefix_cpy(PP(1), 64, &a1.prefix, a1.plen);
+	a1.priority = 2;
+	a1.link = &l1;
+	a1.node_id[0] = 2;
+	pa_prefix_cpy(PP(2), 64, &a2.prefix, a2.plen);
+	a2.priority = 5;
+	a2.link = &l2;
+	a2.node_id[0] = 3;
+
+	pa_advp_add(&core, &a1);
+	fu_loop(3);//Execute both ldp1 and ldp2 routine and apply ldp1 with a1
+
+	sput_fail_if(store.n_prefixes, "No prefixes");
+	sput_fail_unless(list_empty(&store.links), "No links");
+	sput_fail_if(pa_prefix_cmp(&a1.prefix, a1.plen, &ldp1->prefix, ldp1->plen), "Correct prefix");
+
+	ls1.max_prefixes = 3;
+	pa_store_link_add(&store, &ls1);
+	pa_store_link_add(&store, &ls2);
+
+	a2.link = &l1;
+	pa_advp_add(&core, &a2);
+	fu_loop(3);//Execute both ldp1 and ldp2 routine and apply ldp1 with a2
+	//Apply should trigger caching of a2 prefix (PP(2))
+
+	sput_fail_if(pa_prefix_cmp(&a2.prefix, a2.plen, &ldp1->prefix, ldp1->plen), "Correct prefix");
+
+	pa_advp_del(&core, &a2);
+	pa_advp_del(&core, &a1);
+
+	fu_loop(2); //Unassign both
+	sput_fail_if(ldp1->assigned, "No prefix on link");
+	sput_fail_if(ldp2->assigned, "No prefix on link");
+
+	struct pa_store_rule srule;
+	srule.priority = 4;
+	srule.rule_priority = 3;
+	srule.rule.name = "Cached Prefix";
+	pa_store_rule_init(&srule, &store);
+	pa_rule_add(&core, &srule.rule);
+	fu_loop(4);//Execute both ldp1 and ldp2 routine, backoff timer and apply ldp1 with a2
+
+	sput_fail_unless(ldp1->assigned, "Prefix assigned on link");
+	sput_fail_if(pa_prefix_cmp(&a2.prefix, a2.plen, &ldp1->prefix, ldp1->plen), "Correct prefix");
+	sput_fail_unless(ldp1->priority == 4, "Correct priority");
+	sput_fail_unless(ldp1->rule_priority == 3, "Correct rule priority");
+	sput_fail_if(ldp2->assigned, "No prefix on link");
+
+	a2.link = &l2;
+	pa_advp_add(&core, &a2);
+	fu_loop(3); //Execute both, apply a2 on l2 (ldp1 is unassigned)
+	sput_fail_if(ldp1->assigned, "No prefix on link");
+	sput_fail_unless(ldp2->assigned, "Prefix assigned on link");
+	sput_fail_if(pa_prefix_cmp(&a2.prefix, a2.plen, &ldp2->prefix, ldp2->plen), "Correct prefix");
+
+	pa_store_link_remove(&store, &ls1);
+	pa_advp_del(&core, &a2);
+	fu_loop(4); //Execute both, but only l2 will get the prefix
+	sput_fail_if(ldp1->assigned, "No prefix on link");
+	sput_fail_unless(ldp2->assigned, "Prefix assigned on link");
+	sput_fail_if(pa_prefix_cmp(&a2.prefix, a2.plen, &ldp2->prefix, ldp2->plen), "Correct prefix");
+
+	pa_store_link_remove(&store, &ls2);
+	pa_store_term(&store);
+
+	pa_link_del(&l1);
+	pa_link_del(&l2);
+	pa_dp_del(&dp);
+}
 
 void pa_store_delays_test()
 {
@@ -614,6 +722,7 @@ int main() {
 	sput_run_test(pa_store_load_test);
 	sput_run_test(pa_store_saveload_test);
 	sput_run_test(pa_store_delays_test);
+	sput_run_test(pa_store_rule_test);
 	sput_leave_suite(); /* optional */
 	sput_finish_testing();
 	return sput_get_return_value();
