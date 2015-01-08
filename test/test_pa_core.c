@@ -174,6 +174,135 @@ static enum pa_rule_target test_rule_match(struct pa_rule *rule, struct pa_ldp *
 		sput_fail_unless((cr)->match_ctr == match, "Correct match number of calls"); \
 		(cr)->match_ctr = 0; } while(0)
 
+void pa_core_hierarchical() {
+	fu_init();
+
+	struct pa_core core, low_core;
+	struct pa_ldp *ldp, *low_ldp;
+	struct pa_link link, low_link;
+
+	struct test_rule rule = {.rule = CUSTOM_RULE_INIT, .filter_accept = 1},
+				low_rule = {.rule = CUSTOM_RULE_INIT, .filter_accept = 1};
+
+	pa_prefix_cpy(&advp1_01.prefix, 64, &rule.arg.prefix, rule.arg.plen);
+	rule.arg.priority = 1;
+	rule.arg.rule_priority = 1;
+	rule.priority = 1;
+	rule.target = PA_RULE_PUBLISH;
+
+	pa_prefix_cpy(&advp1_01.prefix, 128, &low_rule.arg.prefix, low_rule.arg.plen);
+	low_rule.arg.priority = 1;
+	low_rule.arg.rule_priority = 1;
+	low_rule.priority = 1;
+	low_rule.target = PA_RULE_PUBLISH;
+
+	pa_core_init(&core);
+	pa_core_init(&low_core);
+
+	sput_fail_unless(list_empty(&core.users), "No user");
+	pa_ha_attach(&low_core, &core, 0);
+	sput_fail_if(list_empty(&core.users), "User subscribed");
+	sput_fail_unless(core.users.next == &low_core.ha_user.le, "Correct user");
+
+	pa_rule_add(&core, &rule.rule);
+	pa_rule_add(&low_core, &low_rule.rule);
+
+	link.name = "parent";
+	link.ha_parent = NULL;
+	low_link.name = "child";
+	low_link.ha_parent = &link;
+
+	pa_link_add(&core, &link);
+	pa_link_add(&low_core, &low_link);
+
+	//Adding to low first. It should assign the prefix from low_rule.
+	pa_dp_add(&low_core, &d1);
+
+	fu_loop(3); //Publish and apply
+	low_ldp = list_entry(d1.ldps.next, struct pa_ldp, in_dp);
+	check_ldp_flags(low_ldp, 1, 1, 1, 0);
+	sput_fail_if(low_ldp->ha_apply_pending, "Not pending for HA");
+	check_ldp_prefix(low_ldp, &advp1_01.prefix, 128);
+
+	//Remove from low
+	pa_dp_del(&d1);
+	fu_loop(1);
+
+	//Add to high
+	pa_dp_add(&core, &d1);
+	fu_loop(1); //Publish prefix but no apply
+	ldp = list_entry(d1.ldps.next, struct pa_ldp, in_dp);
+	check_ldp_flags(low_ldp, 1, 1, 0, 0);
+	sput_fail_if(ldp->ha_apply_pending, "Not pending for HA");
+	check_ldp_prefix(low_ldp, &advp1_01.prefix, 64);
+	sput_fail_unless(list_empty(&low_core.dps), "No DP on low core");
+
+	fu_loop(1); //Apply prefix
+	struct pa_dp *low_dp;
+	sput_fail_if(list_empty(&low_core.dps), "One dp");
+	low_dp = container_of(low_core.dps.next, struct pa_dp, le);
+	sput_fail_if(pa_prefix_cmp(&advp1_01.prefix, 64, &low_dp->prefix, low_dp->plen), "Correct prefix");
+	sput_fail_unless(low_dp->ha_ldp == ldp, "Parent ldp is set");
+
+	fu_loop(2); //Publish and apply in low core
+	low_ldp = list_entry(low_link.ldps.next, struct pa_ldp, in_link);
+	check_ldp_flags(low_ldp, 1, 1, 1, 0);
+	sput_fail_if(low_ldp->ha_apply_pending, "Not pending for HA");
+	check_ldp_prefix(low_ldp, &advp1_01.prefix, 128);
+
+	pa_dp_del(&d1); //Remove parent dp
+	sput_fail_unless(list_empty(&core.dps), "No parent dp");
+	sput_fail_unless(list_empty(&low_core.dps), "No lower dp");
+
+	pa_ha_detach(&low_core);
+	low_core.flooding_delay = 1000; //Fast flooding delay compare to core
+	sput_fail_unless(list_empty(&core.users), "No user");
+	pa_ha_attach(&low_core, &core, 1); //Fast mode this time
+	sput_fail_if(list_empty(&core.users), "User subscribed");
+	sput_fail_unless(core.users.next == &low_core.ha_user.le, "Correct user");
+
+	pa_dp_add(&core, &d1); //Add dp back
+	fu_loop(1); //Publish prefix but no apply
+	ldp = list_entry(d1.ldps.next, struct pa_ldp, in_dp);
+
+	sput_fail_if(list_empty(&low_core.dps), "One dp");
+	low_dp = container_of(low_core.dps.next, struct pa_dp, le);
+	sput_fail_if(pa_prefix_cmp(&advp1_01.prefix, 64, &low_dp->prefix, low_dp->plen), "Correct prefix");
+	sput_fail_unless(low_dp->ha_ldp == ldp, "Parent ldp is set");
+
+	fu_loop(1); //Publish
+	low_ldp = list_entry(low_link.ldps.next, struct pa_ldp, in_link);
+	check_ldp_flags(low_ldp, 1, 1, 0, 0);
+	sput_fail_if(low_ldp->ha_apply_pending, "Not pending for HA");
+	check_ldp_prefix(low_ldp, &advp1_01.prefix, 128);
+
+	fu_loop(1); //Apply. But it should block, waiting for higher core to apply.
+	check_ldp_flags(low_ldp, 1, 1, 0, 0);
+	sput_fail_unless(low_ldp->ha_apply_pending, "Pending for HA");
+	check_ldp_prefix(low_ldp, &advp1_01.prefix, 128);
+
+	fu_loop(1); //Apply higher level
+	check_ldp_flags(ldp, 1, 1, 1, 0);
+	check_ldp_flags(low_ldp, 1, 1, 1, 0);
+	sput_fail_if(low_ldp->ha_apply_pending, "Not pending for HA");
+	check_ldp_prefix(low_ldp, &advp1_01.prefix, 128);
+
+	pa_ha_detach(&low_core);
+	sput_fail_unless(list_empty(&core.users), "No user");
+	sput_fail_unless(list_empty(&low_core.dps), "No dp");
+
+	pa_ha_attach(&low_core, &core, 1); //Fast mode
+	fu_loop(2);
+	low_ldp = list_entry(low_link.ldps.next, struct pa_ldp, in_link);
+	check_ldp_flags(low_ldp, 1, 1, 1, 0);
+	sput_fail_if(low_ldp->ha_apply_pending, "Not pending for HA");
+	check_ldp_prefix(low_ldp, &advp1_01.prefix, 128);
+
+	pa_dp_del(&d1);
+	pa_link_del(&link);
+	pa_link_del(&low_link);
+}
+
 void pa_core_rule() {
 	struct pa_core core;
 	struct pa_ldp *ldp, *ldp2;
@@ -769,6 +898,7 @@ int main() {
 	sput_run_test(pa_core_data);
 	sput_run_test(pa_core_norule);
 	sput_run_test(pa_core_rule);
+	sput_run_test(pa_core_hierarchical);
 	sput_leave_suite(); /* optional */
 	sput_finish_testing();
 	return sput_get_return_value();

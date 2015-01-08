@@ -37,6 +37,8 @@ const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
 	((!ldp->published) || ((advp)->priority > (ldp)->priority) || \
 	(((advp)->priority == (ldp)->priority) && memcmp((advp)->node_id, (ldp)->core->node_id, PA_NODE_ID_LEN)))
 
+
+#define pa_for_each_dp_safe(pa_core, pa_dp, pa_dp2) list_for_each_entry_safe(pa_dp, pa_dp2, &(pa_core)->dps, le)
 #define pa_for_each_ldp_in_dp_safe(pa_dp, pa_ldp, pa_ldp2) list_for_each_entry_safe(pa_ldp, pa_ldp2, &(pa_dp)->ldps, in_dp)
 #define pa_for_each_ldp_in_link_safe(pa_link, pa_ldp, pa_ldp2) list_for_each_entry_safe(pa_ldp, pa_ldp2, &(pa_link)->ldps, in_link)
 #define pa_for_each_user(pa_core, pa_user) list_for_each_entry(pa_user, &(pa_core)->users, le)
@@ -64,13 +66,16 @@ static void pa_ldp_apply(struct pa_ldp *ldp)
 
 #ifdef PA_HIERARCHICAL
 	if(ldp->dp->ha_ldp && !ldp->dp->ha_ldp->applied) {
-		//Wait for the higher-level prefix to be applied
+		PA_DEBUG("Apply of "PA_LDP_P" must wait for "PA_LDP_P" being applied", PA_LDP_PA(ldp),  PA_LDP_PA(ldp->dp->ha_ldp));
 		ldp->ha_apply_pending = 1;
 		return;
 	}
 #endif
 
+	PA_DEBUG("Applying "PA_LDP_P, PA_LDP_PA(ldp));
+
 	ldp->applied = 1;
+	ldp->ha_apply_pending = 0;
 	pa_user_notify(ldp, applied);
 }
 
@@ -198,6 +203,7 @@ static int pa_ldp_assign(struct pa_ldp *ldp, pa_prefix *prefix, pa_plen plen)
 	}
 
 	//Cancel backoff timer and set apply timer
+	PA_DEBUG("Set apply timer %d", 2 * ldp->core->flooding_delay);
 	uloop_timeout_set(&ldp->backoff_to, 2 * ldp->core->flooding_delay);
 
 	ldp->assigned = 1;
@@ -362,7 +368,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 			pa_routine_schedule(ldp); //We will have to start again
 			break;
 		case PA_RULE_PUBLISH:
-			PA_DEBUG("Target: Publish %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_repr(&ldp->prefix, ldp->plen),
+			PA_DEBUG("Target: Publish %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_repr(&best_arg.prefix, best_arg.plen),
 								best_arg.priority, best_arg.rule_priority);
 
 			/* Unassign conflicting prefixes on other ldps */
@@ -718,24 +724,6 @@ int pa_rule_valid_assignment(struct pa_ldp *ldp, pa_prefix *prefix, pa_plen plen
 	return 1;
 }
 
-/* Will un-assign all conflicting assigned prefixes. Including the given ldp itself
- * if different from the given prefix. The routine for other overriden ldps will
- * be scheduled.
- */
-void pa_rule_override_assignment(struct pa_ldp *ldp, pa_prefix *prefix, pa_plen plen)
-{
-	struct pa_pentry *p;
-	struct pa_ldp *ldp2;
-	btrie_for_each_updown_entry(p, &ldp->core->prefixes, (btrie_key_t *)prefix, plen, be) {
-		if(p->type == PAT_ASSIGNED && (p != &ldp->in_core)) {
-			ldp2 = container_of(p, struct pa_ldp, in_core);
-			pa_ldp_unassign(ldp2);
-			pa_routine_schedule(ldp2);
-		}
-	}
-}
-
-
 #ifdef PA_HIERARCHICAL
 /***************************
  * Hierarchical Assignment *
@@ -813,6 +801,7 @@ static void pa_ha_applied_cb(struct pa_user *user, struct pa_ldp *ldp)
 		}
 		//A prefix is only unapplied when unassigned
 	} else {
+		PA_DEBUG("Hierarchical Assignment - Apply callback in safe mode");
 		//Safe mode
 		if(ldp->applied) {
 			pa_ha_dp_add(core, ldp);
@@ -824,7 +813,7 @@ static void pa_ha_applied_cb(struct pa_user *user, struct pa_ldp *ldp)
 
 void pa_ha_attach(struct pa_core *child, struct pa_core *parent, uint8_t fast_assignment)
 {
-	child->ha_user.applied = NULL;
+	child->ha_user.applied = pa_ha_applied_cb;
 	child->ha_user.assigned = fast_assignment?pa_ha_assigned_cb:NULL;
 	child->ha_user.published = NULL;
 	child->ha_parent = parent;
@@ -836,16 +825,19 @@ void pa_ha_attach(struct pa_core *child, struct pa_core *parent, uint8_t fast_as
 	struct pa_dp *dp;
 	struct pa_ldp *ldp;
 	pa_for_each_dp(parent, dp)
-		pa_for_each_ldp_in_dp(dp, ldp)
+		pa_for_each_ldp_in_dp(dp, ldp) {
+			if(fast_assignment && ldp->assigned)
+				pa_ha_assigned_cb(&child->ha_user, ldp);
 			if(ldp->applied)
 				pa_ha_applied_cb(&child->ha_user, ldp);
+	}
 }
 
 void pa_ha_detach(struct pa_core *child)
 {
 	/* Remove all dps that are from the parent. */
-	struct pa_dp *dp;
-	pa_for_each_dp(child, dp) {
+	struct pa_dp *dp, *dp2;
+	pa_for_each_dp_safe(child, dp, dp2) {
 		if(dp->ha_ldp) {
 			pa_dp_del(dp);
 			free(dp);
