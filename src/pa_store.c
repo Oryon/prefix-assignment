@@ -461,7 +461,7 @@ enum pa_rule_target pa_store_match(struct pa_rule *rule, struct pa_ldp *ldp,
 	list_for_each_entry(prefix, &l->prefixes, in_link) {
 		if(prefix->plen >= ldp->dp->plen &&
 				pa_prefix_contains(&ldp->dp->prefix, ldp->dp->plen, &prefix->prefix) &&
-				pa_prefix_available(ldp->core, &prefix->prefix, prefix->plen, 0, 0)) {
+				pa_rule_valid_assignment(ldp, &prefix->prefix, prefix->plen, 0, 0, 0)) {
 			if(!ldp->backoff)
 				return PA_RULE_BACKOFF; //Start or continue backoff timer.
 

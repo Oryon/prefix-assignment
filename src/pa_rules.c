@@ -141,9 +141,11 @@ enum pa_rule_target pa_rule_adopt_match(struct pa_rule *rule, __unused struct pa
 pa_rule_priority pa_rule_random_get_max_priority(struct pa_rule *rule, struct pa_ldp *ldp)
 {
 	struct pa_rule_random *rule_r = container_of(rule, struct pa_rule_random, rule);
-	if(!ldp->best_assignment && (!ldp->valid || !ldp->published))
-		return rule_r->rule_priority;
-	return 0;
+	if(ldp->best_assignment //Someone else advertises
+			|| (ldp->valid && ldp->published)) //We advertise)
+			return 0;
+
+	return rule_r->rule_priority;
 }
 
 enum pa_rule_target pa_rule_random_match(struct pa_rule *rule, struct pa_ldp *ldp,
@@ -214,5 +216,29 @@ enum pa_rule_target pa_rule_random_match(struct pa_rule *rule, struct pa_ldp *ld
 
 choose:
 	pa_prefix_cpy(&tentative, rule_r->desired_plen, &pa_arg->prefix, pa_arg->plen);
+	return PA_RULE_PUBLISH;
+}
+
+/**** Static rule ****/
+
+pa_rule_priority pa_rule_static_get_max_priority(struct pa_rule *rule, struct pa_ldp *ldp)
+{
+	struct pa_rule_static *srule = container_of(rule, struct pa_rule_static, rule);
+	if(pa_rule_valid_assignment(ldp, &srule->prefix, srule->plen,
+			srule->override_rule_priority, srule->override_priority, srule->safety))
+		return srule->rule_priority;
+	return 0;
+}
+
+enum pa_rule_target pa_rule_static_match(struct pa_rule *rule, struct pa_ldp *ldp,
+			__unused pa_rule_priority best_match_priority, struct pa_rule_arg *pa_arg)
+{
+	struct pa_rule_static *srule = container_of(rule, struct pa_rule_static, rule);
+	if(!ldp->backoff)
+		return PA_RULE_BACKOFF;
+
+	pa_arg->rule_priority = srule->rule_priority;
+	pa_arg->priority = srule->priority;
+	pa_prefix_cpy(&srule->prefix, srule->plen, &pa_arg->prefix, pa_arg->plen);
 	return PA_RULE_PUBLISH;
 }

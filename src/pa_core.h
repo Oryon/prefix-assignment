@@ -395,14 +395,22 @@ void pa_rule_del(struct pa_core *, struct pa_rule *);
 
 
 /***************************
- *   Utility Functions     *
+ * Rules Utility Functions *
  ***************************/
 
-/* Checks whether a prefix is not
- * - published or adopted in any ldp with rule priority higher or equal to ldp_override.
- * - advertised in any advp with a adv. priority higher or equal to adv_override. */
-int pa_prefix_available(struct pa_core *, pa_prefix *prefix, pa_plen plen,
-		pa_rule_priority ldp_override, pa_priority adv_override);
+/* Checks if a candidate assignment would be a valid assignment for a given ldp.
+ * prefix: The candidate prefix
+ * plen: The candidate prefix length
+ * override_rule_priority: Assignment is not valid if conflicting ldps have higher
+ *                         or equal rule priority.
+ * override_priority: Assignment is not valid if existing advertised prefix have
+ *                    higher or equal advertised prefix priority.
+ * safety: When set, assignment is not valid if a conflicting ldp have a strictly
+ *         higher advertised prefix priority. This is to avoid assignment loops.
+ */
+int pa_rule_valid_assignment(struct pa_ldp *ldp, pa_prefix *prefix, pa_plen plen,
+		pa_rule_priority override_rule_priority, pa_priority override_priority,
+		uint8_t safety);
 
 
 #ifdef PA_HIERARCHICAL

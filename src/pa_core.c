@@ -57,27 +57,6 @@ const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
 #define PA_ADOPT_DELAY_r(ldp) (pa_rand() % PA_ADOPT_DELAY)
 #define PA_BACKOFF_DELAY_r(ldp) (PA_ADOPT_DELAY + pa_rand() % (PA_BACKOFF_DELAY - PA_ADOPT_DELAY))
 
-
-int pa_prefix_available(struct pa_core *core, pa_prefix *prefix, pa_plen plen,
-		pa_rule_priority ldp_override, pa_priority adv_override)
-{
-	struct pa_pentry *p;
-	struct pa_advp *advp;
-	struct pa_ldp *ldp;
-	btrie_for_each_updown_entry(p, &core->prefixes, (btrie_key_t *)prefix, plen, be) {
-		if(p->type == PAT_ASSIGNED) {
-			ldp = container_of(p, struct pa_ldp, in_core);
-			if((ldp->published || ldp->adopting) && ldp->rule_priority >= ldp_override)
-				return 0;
-		} else if (p->type == PAT_ADVERTISED) {
-			advp = container_of(p, struct pa_advp, in_core);
-			if(advp->priority >= adv_override)
-				return 0;
-		}
-	}
-	return 1;
-}
-
 static void pa_ldp_apply(struct pa_ldp *ldp)
 {
 	if(ldp->applied)
@@ -361,6 +340,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 		PA_DEBUG("Rule "PA_RULE_P" matched", PA_RULE_PA(best_rule));
 
 	/* Now act upon the best rule */
+	struct pa_ldp *ldp2;
 	switch (best_target) {
 		case PA_RULE_ADOPT:
 			PA_DEBUG("Target: Adoption %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_repr(&ldp->prefix, ldp->plen),
@@ -384,6 +364,16 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 		case PA_RULE_PUBLISH:
 			PA_DEBUG("Target: Publish %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_repr(&ldp->prefix, ldp->plen),
 								best_arg.priority, best_arg.rule_priority);
+
+			/* Unassign conflicting prefixes on other ldps */
+			btrie_for_each_updown_entry(pentry, &ldp->core->prefixes, (btrie_key_t *)&best_arg.prefix, best_arg.plen, be) {
+				if(pentry->type == PAT_ASSIGNED && (pentry != &ldp->in_core)) {
+					ldp2 = container_of(pentry, struct pa_ldp, in_core);
+					pa_ldp_unassign(ldp2);
+					pa_routine_schedule(ldp2);
+				}
+			}
+
 			if(ldp->assigned &&
 					!pa_prefix_equals(&best_arg.prefix, best_arg.plen, &ldp->prefix, ldp->plen)) {
 				pa_ldp_unassign(ldp);
@@ -691,6 +681,58 @@ void pa_core_init(struct pa_core *core)
 #ifdef PA_HIERARCHICAL
 	core->ha_parent = NULL;
 #endif
+}
+
+
+int pa_rule_valid_assignment(struct pa_ldp *ldp, pa_prefix *prefix, pa_plen plen,
+		pa_rule_priority override_rule_priority, pa_priority override_priority,
+		uint8_t safety)
+{
+	struct pa_pentry *p;
+	struct pa_advp *advp;
+	struct pa_ldp *ldp2;
+
+	if(ldp->best_assignment) {
+		if(ldp->best_assignment->priority >= override_priority)
+			return 0;
+	} else if(ldp->assigned) {
+		if((ldp->published || ldp->adopting) && (ldp->rule_priority >= override_rule_priority))
+			return 0;
+		else if(safety && ldp->published && (ldp->priority >= override_priority))
+			return 0;
+	}
+
+	btrie_for_each_updown_entry(p, &ldp->core->prefixes, (btrie_key_t *)prefix, plen, be) {
+		if(p->type == PAT_ASSIGNED) {
+			ldp2 = container_of(p, struct pa_ldp, in_core);
+			if((ldp2->published || ldp2->adopting) && (ldp2->rule_priority >= override_rule_priority))
+				return 0;
+			if(safety && ldp2->published && (ldp2->priority > override_priority))
+				return 0;
+		} else if (p->type == PAT_ADVERTISED) {
+			advp = container_of(p, struct pa_advp, in_core);
+			if(advp->priority >= override_priority)
+				return 0;
+		}
+	}
+	return 1;
+}
+
+/* Will un-assign all conflicting assigned prefixes. Including the given ldp itself
+ * if different from the given prefix. The routine for other overriden ldps will
+ * be scheduled.
+ */
+void pa_rule_override_assignment(struct pa_ldp *ldp, pa_prefix *prefix, pa_plen plen)
+{
+	struct pa_pentry *p;
+	struct pa_ldp *ldp2;
+	btrie_for_each_updown_entry(p, &ldp->core->prefixes, (btrie_key_t *)prefix, plen, be) {
+		if(p->type == PAT_ASSIGNED && (p != &ldp->in_core)) {
+			ldp2 = container_of(p, struct pa_ldp, in_core);
+			pa_ldp_unassign(ldp2);
+			pa_routine_schedule(ldp2);
+		}
+	}
 }
 
 
