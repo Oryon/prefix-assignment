@@ -347,6 +347,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 
 	/* Now act upon the best rule */
 	struct pa_ldp *ldp2;
+	struct pa_pentry *pentry2;
 	switch (best_target) {
 		case PA_RULE_ADOPT:
 			PA_DEBUG("Target: Adoption %s - priority="PA_PRIO_P" rule_priority="PA_RULE_PRIO_P, pa_prefix_repr(&ldp->prefix, ldp->plen),
@@ -355,8 +356,12 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 			break;
 		case PA_RULE_BACKOFF:
 			PA_DEBUG("Target: Backoff");
+			if(ldp->best_assignment) {
+				PA_WARNING("Backoff is not a valid rule target, as there is a best assignment.");
+				break;
+			}
 			//Unassign if assigned.
-			//Backoff only makes sense for not applied ldps
+			//Backoff only makes sense for not assigned ldps
 			pa_ldp_unassign(ldp);
 			//If already pending, we can keep waiting.
 			if(!ldp->backoff_to.pending)
@@ -372,7 +377,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 								best_arg.priority, best_arg.rule_priority);
 
 			/* Unassign conflicting prefixes on other ldps */
-			btrie_for_each_updown_entry(pentry, &ldp->core->prefixes, (btrie_key_t *)&best_arg.prefix, best_arg.plen, be) {
+			btrie_for_each_updown_entry_safe(pentry, pentry2, &ldp->core->prefixes, (btrie_key_t *)&best_arg.prefix, best_arg.plen, be) {
 				if(pentry->type == PAT_ASSIGNED && (pentry != &ldp->in_core)) {
 					ldp2 = container_of(pentry, struct pa_ldp, in_core);
 					pa_ldp_unassign(ldp2);
@@ -465,9 +470,9 @@ static int pa_ldp_create(struct pa_core *core, struct pa_link *link, struct pa_d
 	ldp->in_core.type = PAT_ASSIGNED;
 	ldp->core = core;
 	ldp->link = link;
-	list_add(&ldp->in_link, &link->ldps);
+	list_add_tail(&ldp->in_link, &link->ldps);
 	ldp->dp = dp;
-	list_add(&ldp->in_dp, &dp->ldps);
+	list_add_tail(&ldp->in_dp, &dp->ldps);
 	PA_DEBUG("Creating Link/Delegated Prefix pair: "PA_LDP_P, PA_LDP_PA(ldp));
 	pa_routine_schedule(ldp);
 	return 0;
@@ -509,7 +514,7 @@ int pa_dp_add(struct pa_core *core, struct pa_dp *dp)
 {
 	PA_INFO("Adding Delegated Prefix "PA_DP_P, PA_DP_PA(dp));
 	INIT_LIST_HEAD(&dp->ldps);
-	list_add(&dp->le, &core->dps);
+	list_add_tail(&dp->le, &core->dps);
 	struct pa_link *link;
 	pa_for_each_link(core, link) {
 #ifdef PA_HIERARCHICAL
@@ -552,7 +557,7 @@ int pa_link_add(struct pa_core *core, struct pa_link *link)
 {
 	PA_INFO("Adding Link "PA_LINK_P, PA_LINK_PA(link));
 	INIT_LIST_HEAD(&link->ldps);
-	list_add(&link->le, &core->links);
+	list_add_tail(&link->le, &core->links);
 	struct pa_dp *dp;
 	pa_for_each_dp(core, dp) {
 #ifdef PA_HIERARCHICAL

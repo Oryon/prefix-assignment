@@ -38,6 +38,9 @@ static int f_btrie_add(struct btrie *root, struct btrie_element *new, const btri
 
 #define TEST_DEBUG(format, ...) printf("TEST Debug   : "format"\n", ##__VA_ARGS__)
 
+#include "pa_rules.h"
+#include "pa_filters.h"
+
 #include "pa_core.c"
 
 #define __unused __attribute__ ((unused))
@@ -173,6 +176,166 @@ static enum pa_rule_target test_rule_match(struct pa_rule *rule, struct pa_ldp *
 		(cr)->prio_ctr = 0;\
 		sput_fail_unless((cr)->match_ctr == match, "Correct match number of calls"); \
 		(cr)->match_ctr = 0; } while(0)
+
+void pa_core_override() {
+	fu_init();
+	fr_mask_random = 0;
+	struct pa_core core;
+	struct pa_rule_static s1, s2;
+	struct pa_ldp *ldp;
+	struct pa_filter_ldp f1, f2;
+
+	pa_rule_static_init(&s1);
+	s1.rule.name = "static rule 1";
+	s1.override_priority = 0;
+	s1.override_rule_priority = 0;
+	s1.priority = 3;
+	s1.rule_priority = 3;
+	pa_prefix_cpy(&advp1_01.prefix, 80, &s1.prefix, s1.plen);
+	pa_filter_ldp_init(&f1, &l1, NULL);
+	pa_rule_set_filter(&s1.rule, &f1.filter);
+
+	core.node_id[0] = id1;
+	pa_core_init(&core);
+	pa_rule_add(&core, &s1.rule);
+
+	pa_link_add(&core, &l1);
+	pa_dp_add(&core, &d1);
+	ldp = list_entry(d1.ldps.next, struct pa_ldp, in_dp);
+
+	fu_loop(3); //Routine, Backoff and Apply
+	check_ldp_flags(ldp, 1, 1, 1, 0);
+	check_ldp_prefix(ldp, &advp1_01.prefix, 80);
+
+
+	advp1_01.priority = 3;
+	advp1_01.link = NULL;
+	advp1_01.node_id[0] = id2; //id is higher
+	pa_advp_add(&core, &advp1_01);
+
+	fu_loop(1); //Unassign ldp
+	check_ldp_flags(ldp, 0, 0, 0, 0);
+
+	pa_rule_del(&core, &s1.rule);
+	s1.override_priority = 3;
+	pa_rule_add(&core, &s1.rule);
+	fu_loop(1); //Stille nothing assigned
+	check_ldp_flags(ldp, 0, 0, 0, 0);
+
+	pa_rule_del(&core, &s1.rule);
+	s1.override_priority = 4;
+	s1.priority = 7;
+	pa_rule_add(&core, &s1.rule);
+	fu_loop(3); //Override prefix
+	check_ldp_flags(ldp, 1, 1, 1, 0);
+	check_ldp_prefix(ldp, &advp1_01.prefix, 80);
+
+	advp1_01.priority = 6; //Lower prio
+	pa_advp_update(&core, &advp1_01);
+	fu_loop(1); //No change
+	check_ldp_flags(ldp, 1, 1, 1, 0);
+	check_ldp_prefix(ldp, &advp1_01.prefix, 80);
+
+	pa_advp_del(&core, &advp1_01);
+
+	//Different prefix assigned on the interface
+	advp1_02.priority = 6;
+	advp1_02.link = &l1;
+	advp1_02.node_id[0] = id2; //id is higher
+	pa_advp_add(&core, &advp1_02);
+
+	fu_loop(1); //No change
+	check_ldp_flags(ldp, 1, 1, 1, 0);
+	check_ldp_prefix(ldp, &advp1_01.prefix, 80);
+
+	advp1_02.priority = 7;
+	pa_advp_update(&core, &advp1_02);
+	fu_loop(2); //Overriden prefix
+	check_ldp_flags(ldp, 1, 0, 1, 0);
+	check_ldp_prefix(ldp, &advp1_02.prefix, 64);
+
+	pa_rule_del(&core, &s1.rule);
+	s1.override_priority = 7; //Not big enough
+	s1.priority = 8;
+	pa_rule_add(&core, &s1.rule);
+	fu_loop(1); //Nothing happens
+	check_ldp_flags(ldp, 1, 0, 1, 0);
+	check_ldp_prefix(ldp, &advp1_02.prefix, 64);
+
+	pa_rule_del(&core, &s1.rule);
+	s1.override_priority = 8;
+	s1.priority = 8;
+	pa_rule_add(&core, &s1.rule);
+	fu_loop(2); //Override onlink prefix
+	check_ldp_flags(ldp, 1, 1, 1, 0);
+	check_ldp_prefix(ldp, &advp1_01.prefix, 80);
+
+	pa_rule_del(&core, &s1.rule);
+	pa_advp_del(&core, &advp1_02);
+	fu_loop(1); //Eraze everything
+	check_ldp_flags(ldp, 0, 0, 0, 0);
+
+	s1.safety = 1; //Safety on to start with
+	s1.priority = 6;
+	s1.override_priority = 3;
+	s1.rule_priority = 2;
+	s1.override_rule_priority = 2;
+
+	pa_rule_static_init(&s2);
+	s2.rule.name = "static rule 1";
+	s2.override_priority = 0;
+	s2.override_rule_priority = 0;
+	s2.priority = 2;
+	s2.rule_priority = 5;
+	pa_prefix_cpy(&advp1_01.prefix, 75, &s2.prefix, s2.plen); //Colliding prefix
+	pa_filter_ldp_init(&f2, &l2, NULL);
+	pa_rule_set_filter(&s2.rule, &f2.filter);
+
+	pa_link_add(&core, &l2);
+	struct pa_ldp *ldp2;
+	ldp2 = list_entry(l2.ldps.next, struct pa_ldp, in_link);
+
+	pa_rule_add(&core, &s1.rule);
+	pa_rule_add(&core, &s2.rule);
+
+	fu_loop(5); //s2 wins
+	check_ldp_flags(ldp2, 1, 1, 1, 0);
+	check_ldp_prefix(ldp2, &advp1_01.prefix, 75);
+	check_ldp_flags(ldp, 0, 0, 0, 0);
+
+	pa_rule_del(&core, &s1.rule);
+	s1.rule_priority = 8;
+	s1.override_rule_priority = 8;
+	s1.safety = 1; //Safety on, s1 should not win
+	pa_rule_add(&core, &s1.rule);
+
+	fu_loop(1); //s1 can't win because of safety
+	check_ldp_flags(ldp2, 1, 1, 1, 0);
+	check_ldp_prefix(ldp2, &advp1_01.prefix, 75);
+	check_ldp_flags(ldp, 0, 0, 0, 0);
+
+	pa_rule_del(&core, &s1.rule);
+	s1.safety = 0; //Safety's off, s1 should win
+	pa_rule_add(&core, &s1.rule);
+
+	fu_loop(6); //s1 wins
+	check_ldp_flags(ldp, 1, 1, 1, 0);
+	check_ldp_prefix(ldp, &advp1_01.prefix, 80);
+	check_ldp_flags(ldp2, 0, 0, 0, 0);
+
+	pa_rule_del(&core, &s1.rule);
+	pa_rule_del(&core, &s2.rule);
+
+	fu_loop(2);
+
+	check_ldp_flags(ldp2, 0, 0, 0, 0);
+	check_ldp_flags(ldp, 0, 0, 0, 0);
+
+
+	pa_dp_del(&d1);
+	pa_link_del(&l1);
+	pa_link_del(&l2);
+}
 
 void pa_core_hierarchical() {
 	fu_init();
@@ -899,6 +1062,7 @@ int main() {
 	sput_run_test(pa_core_norule);
 	sput_run_test(pa_core_rule);
 	sput_run_test(pa_core_hierarchical);
+	sput_run_test(pa_core_override);
 	sput_leave_suite(); /* optional */
 	sput_finish_testing();
 	return sput_get_return_value();

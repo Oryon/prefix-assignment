@@ -27,8 +27,8 @@ struct pa_filter {
 
 /* Configure a rule to use the specified filter. */
 #define pa_rule_set_filter(rule, filter) do { \
-		(rule)->filter_accept = (filter)->accept; \
-		(rule)->filter_privare = filter; \
+		(rule)->filter_accept = (int (*)(struct pa_rule *, struct pa_ldp *, void *p)) (filter)->accept; \
+		(rule)->filter_private = filter; \
 	} while(0)
 
 /* Remove the filter from a given rule. */

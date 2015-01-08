@@ -17,7 +17,9 @@
 #define pa_rule_init(rule, get_prio, max_prio, match_f) do{ \
 	(rule)->get_max_priority = get_prio; \
 	(rule)->max_priority = max_prio; \
-	(rule)->match = match_f; } while(0)
+	(rule)->match = match_f; \
+	(rule)->filter_accept = NULL; \
+	(rule)->filter_private = NULL;} while(0)
 
 /* When a prefix is assigned and valid, but advertised by no-one,
  * it may be adopted after some random delay.

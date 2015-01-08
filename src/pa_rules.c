@@ -234,7 +234,7 @@ enum pa_rule_target pa_rule_static_match(struct pa_rule *rule, struct pa_ldp *ld
 			__unused pa_rule_priority best_match_priority, struct pa_rule_arg *pa_arg)
 {
 	struct pa_rule_static *srule = container_of(rule, struct pa_rule_static, rule);
-	if(!ldp->backoff)
+	if(!ldp->backoff && !ldp->best_assignment) //Do not return backoff when there is a best_assignment
 		return PA_RULE_BACKOFF;
 
 	pa_arg->rule_priority = srule->rule_priority;
