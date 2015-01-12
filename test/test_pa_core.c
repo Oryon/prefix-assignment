@@ -786,6 +786,7 @@ void pa_core_rule() {
 void pa_core_norule() {
 	struct pa_core core;
 	struct pa_ldp *ldp, *ldp2;
+	struct pa_advp *ai1, *ai2;
 
 	//Nothing pending
 	sput_fail_if(fu_next(), "No pending timeout");
@@ -818,6 +819,12 @@ void pa_core_norule() {
 	check_user(&tuser, NULL, NULL, NULL);
 	check_ldp_flags(ldp, false, false, false, false);
 
+	//No advp for now
+	ai2 = NULL;
+	pa_for_each_advp(&core, ai1, &advp2_01.prefix, advp2_01.plen)
+		ai2 = ai1;
+	sput_fail_if(ai2, "No advp for now");
+
 	//Add an adv prefix outside the dp on a null link
 	//Scheduling only happens when overlap with a dp
 	advp2_01.link = NULL;
@@ -826,6 +833,17 @@ void pa_core_norule() {
 	pa_advp_update(&core, &advp2_01);
 	sput_fail_if(ldp->routine_to.pending, "Not routine pending");
 	sput_fail_if(fu_next(), "No pending timeout");
+
+	//advp added
+	ai2 = NULL;
+	pa_for_each_advp(&core, ai1, &advp2_01.prefix, advp2_01.plen)
+		ai2 = ai1;
+	sput_fail_unless(ai2 == &advp2_01, "No advp for now");
+
+	ai2 = NULL;
+	pa_for_each_advp(&core, ai1, &advp1_01.prefix, advp1_01.plen)
+		ai2 = ai1;
+	sput_fail_if(ai2, "No advp with that prefix");
 
 	//Add an adv prefix inside the dp on a null link
 	advp1_01.link = NULL;
@@ -836,6 +854,11 @@ void pa_core_norule() {
 	fu_loop(1);
 	check_user(&tuser, NULL, NULL, NULL);
 	check_ldp_flags(ldp, false, false, false, false);
+
+	ai2 = NULL;
+	pa_for_each_advp(&core, ai1, &advp1_01.prefix, advp1_01.plen)
+		ai2 = ai1;
+	sput_fail_unless(ai2 == &advp1_01, "No advp for now");
 
 	//Set the adv prefix as onlink
 	//Accept a prefix
@@ -990,6 +1013,10 @@ void pa_core_data() {
 	pa_core_set_node_id(&core, &id1);
 	pa_core_set_flooding_delay(&core, 20000);
 	pa_core_set_flooding_delay(&core, 5000);
+	pa_link_init(&l1, l1.name);
+	pa_link_init(&l2, l2.name);
+	pa_dp_init(&d1, &d1.prefix, d1.plen);
+	pa_dp_init(&d2, &d2.prefix, d2.plen);
 	sput_fail_if(pa_link_add(&core, &l1), "Add L1");
 	sput_fail_if(pa_dp_add(&core, &d1), "Add DP1");
 	sput_fail_if(pa_link_add(&core, &l2), "Add L2");

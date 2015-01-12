@@ -35,12 +35,8 @@ const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
 /* Returns whether the Advertised Prefix takes precedence over the Assigned Prefix. */
 #define pa_precedes(advp, ldp) \
 	((!ldp->published) || ((advp)->priority > (ldp)->priority) || \
-	(((advp)->priority == (ldp)->priority) && memcmp((advp)->node_id, (ldp)->core->node_id, PA_NODE_ID_LEN)))
+	(((advp)->priority == (ldp)->priority) && memcmp((advp)->node_id, (ldp)->core->node_id, PA_NODE_ID_LEN*sizeof(PA_NODE_ID_TYPE))))
 
-
-#define pa_for_each_dp_safe(pa_core, pa_dp, pa_dp2) list_for_each_entry_safe(pa_dp, pa_dp2, &(pa_core)->dps, le)
-#define pa_for_each_ldp_in_dp_safe(pa_dp, pa_ldp, pa_ldp2) list_for_each_entry_safe(pa_ldp, pa_ldp2, &(pa_dp)->ldps, in_dp)
-#define pa_for_each_ldp_in_link_safe(pa_link, pa_ldp, pa_ldp2) list_for_each_entry_safe(pa_ldp, pa_ldp2, &(pa_link)->ldps, in_link)
 #define pa_for_each_user(pa_core, pa_user) list_for_each_entry(pa_user, &(pa_core)->users, le)
 
 #define pa_user_notify(pa_ldp, function) \
@@ -533,6 +529,17 @@ int pa_dp_add(struct pa_core *core, struct pa_dp *dp)
 	return 0;
 }
 
+void pa_dp_init(struct pa_dp *dp, pa_prefix *prefix, pa_plen plen)
+{
+	pa_prefix_cpy(prefix, plen, &dp->prefix, dp->plen);
+#ifdef PA_DP_TYPE
+	dp->type = PA_DP_TYPE_NONE;
+#endif
+#ifdef PA_HIERARCHICAL
+	dp->ha_ldp = NULL;
+#endif
+}
+
 static void _pa_link_del(struct pa_link *link)
 {
 	struct pa_ldp *ldp, *ldp2;
@@ -573,6 +580,17 @@ int pa_link_add(struct pa_core *core, struct pa_link *link)
 		}
 	}
 	return 0;
+}
+
+void pa_link_init(struct pa_link *link, const char *name)
+{
+	link->name = name;
+#ifdef PA_LINK_TYPE
+	link->type = PA_LINK_TYPE_NONE;
+#endif
+#ifdef PA_HIERARCHICAL
+	link->ha_parent = NULL;
+#endif
 }
 
 static void _pa_advp_update(struct pa_core *core, struct pa_advp *advp)
@@ -670,8 +688,8 @@ void pa_core_set_node_id(struct pa_core *core, const PA_NODE_ID_TYPE node_id[])
 	PA_INFO("Set Node ID to "PA_NODE_ID_P, PA_NODE_ID_PA(node_id));
 	struct pa_link *link;
 	struct pa_ldp *ldp;
-	if(memcmp(node_id, core->node_id, PA_NODE_ID_LEN)) {
-		memcpy(core->node_id, node_id, PA_NODE_ID_LEN);
+	if(memcmp(node_id, core->node_id, PA_NODE_ID_LEN*sizeof(PA_NODE_ID_TYPE))) {
+		memcpy(core->node_id, node_id, PA_NODE_ID_LEN*sizeof(PA_NODE_ID_TYPE));
 		/* Schedule routine for all pairs */
 		pa_for_each_link(core, link)
 			pa_for_each_ldp_in_link(link, ldp)

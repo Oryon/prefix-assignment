@@ -100,14 +100,6 @@ struct pa_user {
 /* Unregister a user. */
 #define pa_user_unregister(user) list_del(&(user)->le)
 
-#define pa_for_each_link(pa_core, pa_link) list_for_each_entry(pa_link, &(pa_core)->links, le)
-
-#define pa_for_each_ldp_in_link(pa_link, pa_ldp) list_for_each_entry(pa_ldp, &(pa_link)->ldps, in_link)
-
-#define pa_for_each_dp(pa_core, pa_dp) list_for_each_entry(pa_dp, &(pa_core)->dps, le)
-
-#define pa_for_each_ldp_in_dp(pa_dp, pa_ldp) list_for_each_entry(pa_ldp, &(pa_dp)->ldps, in_dp)
-
 
 /***************************
  *       Generic API       *
@@ -157,7 +149,7 @@ void pa_core_set_flooding_delay(struct pa_core *core, uint32_t flooding_delay);
 struct pa_link {
 	struct list_head le;  /* Linked in pa_core. */
 	struct list_head ldps;/* List of Link/DP pairs associated with this Link. */
-	const char *name;     /* Name, displayed in logs. */
+	const char *name;     /* Name, displayed in logs (NULL is ok). */
 #ifdef PA_LINK_TYPE
 	uint8_t type;           /* Link type identifier provided by user. */
 #endif
@@ -172,9 +164,20 @@ struct pa_link {
 #define PA_LINK_P "%s"
 #define PA_LINK_PA(pa_link) (pa_link)?(pa_link)->name?(pa_link)->name:"no-name":"no-link"
 
+/* Init helper for links. */
+void pa_link_init(struct pa_link *link, const char *name);
+
 /* Adds and deletes a Link for prefix assignment */
 int pa_link_add(struct pa_core *, struct pa_link *);
 void pa_link_del(struct pa_link *);
+
+/* Iterates over all links. */
+#define pa_for_each_link(pa_core, pa_link) list_for_each_entry(pa_link, &(pa_core)->links, le)
+#define pa_for_each_link_safe(pa_core, pa_link, pa_link2) list_for_each_entry_safe(pa_link, pa_link2, &(pa_core)->links, le)
+
+/* Iterates over all delegated prefix/link pair associated with a given link */
+#define pa_for_each_ldp_in_link(pa_link, pa_ldp) list_for_each_entry(pa_ldp, &(pa_link)->ldps, in_link)
+#define pa_for_each_ldp_in_link_safe(pa_link, pa_ldp, pa_ldp2) list_for_each_entry_safe(pa_ldp, pa_ldp2, &(pa_link)->ldps, in_link)
 
 /*
  * Structure used to identify a Delegated Prefix.
@@ -198,9 +201,20 @@ struct pa_dp {
 #define PA_DP_P "%s"
 #define PA_DP_PA(pa_dp) pa_prefix_repr(&(pa_dp)->prefix, (pa_dp)->plen)
 
+/* Init helper for delegated prefixes. */
+void pa_dp_init(struct pa_dp *dp, pa_prefix *prefix, pa_plen plen);
+
 /* Adds and deletes a Delegated Prefix */
 int pa_dp_add(struct pa_core *, struct pa_dp *);
 void pa_dp_del(struct pa_dp *);
+
+/* Iterates over all delegated prefixes. */
+#define pa_for_each_dp(pa_core, pa_dp) list_for_each_entry(pa_dp, &(pa_core)->dps, le)
+#define pa_for_each_dp_safe(pa_core, pa_dp, pa_dp2) list_for_each_entry_safe(pa_dp, pa_dp2, &(pa_core)->dps, le)
+
+/* Iterates over all delegated prefix/link pair, with the given delegated prefix. */
+#define pa_for_each_ldp_in_dp(pa_dp, pa_ldp) list_for_each_entry(pa_ldp, &(pa_dp)->ldps, in_dp)
+#define pa_for_each_ldp_in_dp_safe(pa_dp, pa_ldp, pa_ldp2) list_for_each_entry_safe(pa_ldp, pa_ldp2, &(pa_dp)->ldps, in_dp)
 
 /*
  * Structure used to link all prefixes in the same tree.
@@ -276,6 +290,25 @@ void pa_advp_del(struct pa_core *, struct pa_advp *);
 
 /* Notify that the content of the Advertised Prefix was changes. */
 void pa_advp_update(struct pa_core *, struct pa_advp *);
+
+/*
+ * The provider of advertised prefix should not store advertised prefixes by itself,
+ * as they are all stored in the pa_core structure, and can be accessed with the following
+ * iterators.
+ */
+
+/* Iterates over all advertised prefixes having the exact given prefix. */
+#define pa_for_each_advp(pa_core, pa_adv, prefix, plen) \
+	btrie_for_each_entry(pa_adv, &(pa_core)->prefixes, (btrie_key_t *)prefix, plen, in_core.be) \
+		if((pa_adv)->in_core.type == PAT_ADVERTISED) //Both advertised and assigned prefixes are stored
+
+/* Iterates safely over all advertised prefixes having the exact given prefix.*/
+#define pa_for_each_advp_safe(pa_core, pa_adv, pa_adv2, prefix, plen) \
+	btrie_for_each_entry_safe(pa_adv, pa_adv2, &(pa_core)->prefixes, (btrie_key_t *)prefix, plen, in_core.be) \
+		if((pa_adv)->in_core.type == PAT_ADVERTISED) //Both advertised and assigned prefixes are stored
+
+/* Compare the advertised prefix node id with a given node id (useful with previous iterators for filtering based on node_id) */
+#define pa_advp_nodeid_cmp(advp, node_id) memcmp((advp)->node_id, node_id, PA_NODE_ID_LEN*sizeof(PA_NODE_ID_TYPE))
 
 
 /***************************
@@ -433,5 +466,7 @@ void pa_ha_detach(struct pa_core *child);
 
 
 #endif
+
+
 
 #endif /* PA_CORE_H_ */

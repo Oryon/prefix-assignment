@@ -158,6 +158,11 @@
  *    (Optional) */
 #define PA_LINK_TYPE
 
+#ifdef PA_LINK_TYPE
+/* Reserved for links that have no type associated */
+#define PA_LINK_TYPE_NONE 0
+#endif
+
 /* The Delegated Prefix structure is provided
  * by user(s). When contained in different larger
  * struct, it may be useful to identify the
