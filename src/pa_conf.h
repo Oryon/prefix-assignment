@@ -95,15 +95,15 @@
  *         Timing Values          *
  **********************************/
 
-/* The maximum time a node waits before
- * adopting a prefix.
+/* Default value of the maximum time
+ * a node waits before adopting a prefix.
  */
-#define PA_ADOPT_DELAY 2000
+#define PA_ADOPT_DELAY_DEFAULT 2000
 
-/* The maximum time a node waits before
- * creating a new assignment.
+/* Default value of the maximum time
+ * a node waits before creating a new assignment.
  */
-#define PA_BACKOFF_DELAY 50000
+#define PA_BACKOFF_DELAY_DEFAULT 50000
 
 /**********************************
  *   Flooding Mechanism Specific  *
@@ -118,7 +118,7 @@
 /* Default flooding delay in milliseconds.
  * Set when pa_core is initialized.
  *    (Optional - Default to 10000) */
-#define PA_DEFAULT_FLOODING_DELAY 10000
+#define PA_FLOODING_DELAY_DEFAULT 10000
 
 
 

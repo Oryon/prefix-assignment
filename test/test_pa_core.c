@@ -549,7 +549,7 @@ void pa_core_rule() {
 	check_ldp_flags(ldp, false, false, false, false);
 	check_ldp_publish(ldp, NULL, 0, 0);
 	sput_fail_unless(ldp->backoff_to.pending, "Backoff timer pending");
-	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == (PA_ADOPT_DELAY + 1000 % (PA_BACKOFF_DELAY - PA_ADOPT_DELAY)), "Correct delay");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == (PA_ADOPT_DELAY_DEFAULT + 1000 % (PA_BACKOFF_DELAY_DEFAULT - PA_ADOPT_DELAY_DEFAULT)), "Correct delay");
 	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
 	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
 
@@ -663,7 +663,7 @@ void pa_core_rule() {
 	check_ldp_publish(ldp, &rule1.rule, 3, 10);
 	check_ldp_prefix(ldp, &advp1_02.prefix, advp1_02.plen);
 	sput_fail_unless(ldp->backoff_to.pending, "Backoff timer pending");
-	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == 10 % PA_ADOPT_DELAY, "Correct delay");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == 10 % PA_ADOPT_DELAY_DEFAULT, "Correct delay");
 
 	//Adopt
 	fu_loop(1);
@@ -738,7 +738,7 @@ void pa_core_rule() {
 	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
 	check_ldp_publish(ldp, &rule1.rule, 3, 4);
 	sput_fail_unless(ldp->backoff_to.pending, "Backoff timer pending");
-	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == 10 % PA_ADOPT_DELAY, "Correct delay");
+	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == 10 % PA_ADOPT_DELAY_DEFAULT, "Correct delay");
 	sput_fail_unless(fu_next() == &ldp->backoff_to, "Correct timeout");
 
 	//Adopt

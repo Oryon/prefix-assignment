@@ -116,8 +116,11 @@ struct pa_user {
 /* Structure containing state specific to the overall algorithm. */
 struct pa_core {
 	struct btrie prefixes;           /* btrie containing all Assigned and Advertised Prefixes */
-	PA_NODE_ID_TYPE node_id[PA_NODE_ID_LEN]; /* The Node ID of the local node. Initial value is 0. */
-	uint32_t flooding_delay;         /* The Flooding Delay. Initial value is PA_DEFAULT_FLOODING_DELAY. */
+	PA_NODE_ID_TYPE node_id[PA_NODE_ID_LEN]; /* The Node ID of the local node. (default is 0). */
+	uint32_t flooding_delay;         /* The Flooding Delay. (default PA_FLOODING_DELAY_DEFAULT). */
+	uint32_t adopt_delay;            /* Max wait time before adopting a prefix. (default PA_ADOPT_DELAY_DEFAULT)*/
+	uint32_t backoff_delay;          /* Max wait time before creating a new assignment. (default PA_BACKOFF_DELAY_DEFAULT)*/
+
 	struct list_head users;
 	struct list_head links;
 	struct list_head dps;

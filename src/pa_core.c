@@ -56,8 +56,8 @@ const char *pa_hex_dump(uint8_t *ptr, size_t len, char *s) {
 	if(!(ldp)->routine_to.pending) \
 		uloop_timeout_set(&(ldp)->routine_to, PA_RUN_DELAY); }while(0)
 
-#define PA_ADOPT_DELAY_r(ldp) (pa_rand() % PA_ADOPT_DELAY)
-#define PA_BACKOFF_DELAY_r(ldp) (PA_ADOPT_DELAY + pa_rand() % (PA_BACKOFF_DELAY - PA_ADOPT_DELAY))
+#define PA_ADOPT_DELAY_r(ldp) (pa_rand() % (ldp)->core->adopt_delay)
+#define PA_BACKOFF_DELAY_r(ldp) ((ldp)->core->adopt_delay + pa_rand() % ((ldp)->core->backoff_delay - (ldp)->core->adopt_delay))
 
 static void pa_ldp_apply(struct pa_ldp *ldp)
 {
@@ -687,8 +687,10 @@ void pa_core_init(struct pa_core *core)
 	INIT_LIST_HEAD(&core->users);
 	INIT_LIST_HEAD(&core->rules);
 	btrie_init(&core->prefixes);
-	memset(core->node_id, 0, PA_NODE_ID_LEN);
+	memset(core->node_id, 0, PA_NODE_ID_LEN *sizeof(PA_NODE_ID_TYPE));
 	core->flooding_delay = PA_DEFAULT_FLOODING_DELAY;
+	core->adopt_delay = PA_ADOPT_DELAY_DEFAULT;
+	core->backoff_delay = PA_BACKOFF_DELAY_DEFAULT;
 #ifdef PA_HIERARCHICAL
 	core->ha_parent = NULL;
 #endif
