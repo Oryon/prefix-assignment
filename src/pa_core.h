@@ -241,7 +241,6 @@ struct pa_ldp {
 	uint8_t published : 1;          /* The Assigned Prefix is published. */
 	uint8_t applied   : 1;          /* The Assigned Prefix is applied. */
 	uint8_t adopting  : 1;          /* The Assigned Prefix will be adopted (Only set during backoff). */
-	uint8_t valid     : 1;          /* (in routine) Whether the routine will destroy the Assigned Prefix. */
 	uint8_t backoff   : 1;          /* (in routine) The routine is executed following backoff timeout. */
 #ifdef PA_HIERARCHICAL
 	uint8_t ha_apply_pending : 1;   /* The prefix may be applied, but it is waiting for higher-level prefix to be applied too. */

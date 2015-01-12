@@ -88,8 +88,7 @@ struct test_user {
 		sput_fail_unless((ldp)->rule_priority == rule_prio, "Correct ldp rule_priority"); \
 		sput_fail_unless((ldp)->priority == prio, "Correct ldp priority");
 
-#define check_ldp_routine(ldp, v, b, best) \
-		sput_fail_unless((ldp)->valid == v, "Correct ldp valid"); \
+#define check_ldp_routine(ldp, b, best) \
 		sput_fail_unless((ldp)->backoff == b, "Correct ldp backoff flag"); \
 		sput_fail_unless((ldp)->best_assignment == best, "Correct ldp best_assignment");
 
@@ -509,8 +508,8 @@ void pa_core_rule() {
 	sput_fail_unless(rule2.filter_p == &rule2, "Correct private pointer");
 	check_ldp_flags(ldp, false, false, false, false);
 	check_ldp_publish(ldp, NULL, 0, 0);
-	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
-	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 
 	pa_rule_del(&core, &rule1.rule);
 	rule1.filter_accept = 1;
@@ -521,8 +520,8 @@ void pa_core_rule() {
 	cr_check_ctr(&rule2, 1, 0, 0);
 	check_ldp_flags(ldp, false, false, false, false);
 	check_ldp_publish(ldp, NULL, 0, 0);
-	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
-	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 
 	pa_rule_del(&core, &rule2.rule);
 	rule2.filter_accept = 1;
@@ -534,8 +533,8 @@ void pa_core_rule() {
 	cr_check_ctr(&rule2, 1, 1, 1);
 	check_ldp_flags(ldp, false, false, false, false);
 	check_ldp_publish(ldp, NULL, 0, 0);
-	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
-	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 
 	pa_rule_del(&core, &rule1.rule);
 	rule1.priority = 3; //Higher priority than rule2
@@ -550,8 +549,8 @@ void pa_core_rule() {
 	check_ldp_publish(ldp, NULL, 0, 0);
 	sput_fail_unless(ldp->backoff_to.pending, "Backoff timer pending");
 	sput_fail_unless(uloop_timeout_remaining(&ldp->backoff_to) == (PA_ADOPT_DELAY_DEFAULT + 1000 % (PA_BACKOFF_DELAY_DEFAULT - PA_ADOPT_DELAY_DEFAULT)), "Correct delay");
-	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
-	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 
 	rule1.target = PA_RULE_PUBLISH; //This time, we publish
 	rule1.arg.plen = 63;
@@ -564,8 +563,8 @@ void pa_core_rule() {
 	check_ldp_flags(ldp, true, true, false, false);
 	check_ldp_publish(ldp, &rule1.rule, 3, 5);
 	check_ldp_prefix(ldp, &rule1.arg.prefix, rule1.arg.plen);
-	check_ldp_routine(&rule1.ldp, 0, 1, NULL);
-	check_ldp_routine(&rule2.ldp, 0, 1, NULL);
+	check_ldp_routine(&rule1.ldp, 1, NULL);
+	check_ldp_routine(&rule2.ldp, 1, NULL);
 	check_user(&tuser, ldp, ldp, NULL);
 
 
@@ -590,8 +589,8 @@ void pa_core_rule() {
 	check_ldp_flags(ldp, true, true, false, false);
 	check_ldp_publish(ldp, &rule2.rule, 4, 3);
 	check_ldp_prefix(ldp, &rule2.arg.prefix, rule2.arg.plen);
-	check_ldp_routine(&rule1.ldp, 1, 0, NULL);
-	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 
 	//Apply
 	fu_loop(1);
@@ -630,8 +629,8 @@ void pa_core_rule() {
 	check_user(&tuser, ldp, ldp, ldp);
 	cr_check_ctr(&rule1, 1, 1, 1);
 	cr_check_ctr(&rule2, 1, 1, 1);
-	check_ldp_routine(&rule1.ldp, 0, 0, NULL);
-	check_ldp_routine(&rule2.ldp, 0, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 	check_ldp_flags(ldp, false, false, false, false);
 	check_ldp_publish(ldp, NULL, 0, 0);
 
@@ -658,7 +657,7 @@ void pa_core_rule() {
 	check_user(&tuser, NULL, NULL, NULL);
 	cr_check_ctr(&rule1, 1, 1, 1);
 	cr_check_ctr(&rule2, 1, 1, 0);
-	check_ldp_routine(&rule1.ldp, 1, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 0, NULL);
 	check_ldp_flags(ldp, true, false, false, true);
 	check_ldp_publish(ldp, &rule1.rule, 3, 10);
 	check_ldp_prefix(ldp, &advp1_02.prefix, advp1_02.plen);
@@ -687,7 +686,7 @@ void pa_core_rule() {
 	check_user(&tuser, ldp, ldp, ldp);
 	cr_check_ctr(&rule1, 1, 1, 0);
 	cr_check_ctr(&rule2, 1, 1, 1);
-	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 	check_ldp_flags(ldp, false, false, false, false);
 	check_ldp_publish(ldp, NULL, 0, 0);
 
@@ -699,8 +698,8 @@ void pa_core_rule() {
 	check_user(&tuser, ldp, NULL, NULL);
 	cr_check_ctr(&rule1, 1, 1, 1);
 	cr_check_ctr(&rule2, 1, 1, 1);
-	check_ldp_routine(&rule2.ldp, 0, 0, &advp1_01);
-	check_ldp_routine(&rule1.ldp, 0, 0, &advp1_01);
+	check_ldp_routine(&rule2.ldp, 0, &advp1_01);
+	check_ldp_routine(&rule1.ldp, 0, &advp1_01);
 	check_ldp_flags(ldp, true, false, false, false);
 	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
 
@@ -731,8 +730,8 @@ void pa_core_rule() {
 	fu_loop(1);
 	cr_check_ctr(&rule1, 1, 1, 1);
 	cr_check_ctr(&rule2, 1, 1, 1);
-	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
-	check_ldp_routine(&rule1.ldp, 1, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
+	check_ldp_routine(&rule1.ldp, 0, NULL);
 	check_user(&tuser, NULL, NULL, NULL);
 	check_ldp_flags(ldp, true, false, true, true);
 	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
@@ -761,7 +760,7 @@ void pa_core_rule() {
 	fu_loop(1);
 	cr_check_ctr(&rule1, 1, 1, 0); //Too small priority to be called
 	cr_check_ctr(&rule2, 1, 1, 1);
-	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 	check_user(&tuser, NULL, ldp, NULL);
 	check_ldp_flags(ldp, true, true, true, false);
 	check_ldp_prefix(ldp, &advp1_01.prefix, advp1_01.plen);
@@ -773,7 +772,7 @@ void pa_core_rule() {
 	fu_loop(1);
 	cr_check_ctr(&rule1, 1, 1, 1);
 	cr_check_ctr(&rule2, 0, 0, 0);
-	check_ldp_routine(&rule2.ldp, 1, 0, NULL);
+	check_ldp_routine(&rule2.ldp, 0, NULL);
 	check_user(&tuser, ldp, ldp, ldp);
 	check_ldp_flags(ldp, false, false, false, false);
 

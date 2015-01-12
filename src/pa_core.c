@@ -263,14 +263,15 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 		ldp->best_assignment = NULL; //We don't really care about invalid best assignments.
 
 	if(ldp->assigned) { //Check whether the algorithm would keep that prefix or destroy it.
+		bool valid;
 		if(!ldp->best_assignment) {
-			ldp->valid = pa_ldp_global_valid(ldp); //Globally valid
+			valid = pa_ldp_global_valid(ldp); //Globally valid
 		} else {
-			ldp->valid = pa_prefix_equals(&ldp->prefix, ldp->plen, //Different from Best Assignment
+			valid = pa_prefix_equals(&ldp->prefix, ldp->plen, //Different from Best Assignment
 					&ldp->best_assignment->prefix, ldp->best_assignment->plen);
 		}
-	} else {
-		ldp->valid = 0;
+		if(!valid)
+			pa_ldp_unassign(ldp);
 	}
 
 	/* If there is a best assignment, we can't adopt the prefix. */
@@ -317,7 +318,7 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 	struct pa_rule *best_rule;
 
 	//Get existing rule priority
-	best_prio = (ldp->valid && (ldp->published || ldp->adopting))?ldp->rule_priority:0;
+	best_prio = (ldp->published || ldp->adopting)?ldp->rule_priority:0;
 
 	list_for_each_entry(rule, &rules, _le) {
 		if(rule->_max_priority <= best_prio)
@@ -396,7 +397,6 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 
 			//publish must return a valid advertisement
 			ldp->best_assignment = NULL;
-			ldp->valid = 1;
 
 			//TODO: Send an update to FM instead of un-publish+publish
 			break;
@@ -408,9 +408,6 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 	/*********************************
 	 * 4. End the routine            *
 	 *********************************/
-
-	if(ldp->assigned && !ldp->valid)
-		pa_ldp_unassign(ldp);
 
 	if(ldp->assigned) {
 		//Assigned and valid

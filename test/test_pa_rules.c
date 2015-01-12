@@ -86,11 +86,9 @@ void pa_rules_random()
 	ldp.best_assignment = &advp;
 	ldp.assigned = 1;
 	ldp.applied = 1;
-	ldp.valid = 1;
 	test_rule_get_max_prio(&random.rule, &ldp, 0);
 
 	ldp.best_assignment = NULL;
-	ldp.valid = 1;
 	ldp.published = 1;
 	test_rule_get_max_prio(&random.rule, &ldp, 0);
 
@@ -208,10 +206,10 @@ void pa_rules_adopt()
 	pa_rule_adopt_init(&adopt);
 	adopt.priority = 5;
 	adopt.rule_priority = 3;
+	ldp.assigned = 0;
 	test_rule_get_max_prio(&adopt.rule, &ldp, 0);
 
 	ldp.assigned = 1;
-	ldp.valid = 1;
 	test_rule_get_max_prio(&adopt.rule, &ldp, 3);
 
 	test_rule_match(&adopt.rule, &ldp, 1, &arg, PA_RULE_ADOPT);

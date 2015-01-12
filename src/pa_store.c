@@ -421,7 +421,7 @@ void pa_store_init(struct pa_store *store, struct pa_core *core, uint32_t max_pr
 
 pa_rule_priority pa_store_get_max_priority(struct pa_rule *rule, struct pa_ldp *ldp)
 {
-	if(ldp->best_assignment || (ldp->valid && ldp->published))
+	if(ldp->best_assignment || ldp->published) //No override
 		return 0;
 
 	struct pa_store_rule *rule_s = container_of(rule, struct pa_store_rule, rule);

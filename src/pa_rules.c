@@ -119,9 +119,9 @@ void pa_rule_prefix_prandom(const uint8_t *seed, size_t seedlen, uint32_t ctr,
 
 pa_rule_priority pa_rule_adopt_get_max_priority(struct pa_rule *rule, struct pa_ldp *ldp)
 {
-	if(ldp->valid && !ldp->best_assignment && !ldp->published)
-		return container_of(rule, struct pa_rule_adopt, rule)->rule_priority;
-	return 0;
+	if(!ldp->assigned || ldp->best_assignment || ldp->published) //No override
+		return 0;
+	return container_of(rule, struct pa_rule_adopt, rule)->rule_priority;
 }
 
 enum pa_rule_target pa_rule_adopt_match(struct pa_rule *rule, __unused struct pa_ldp *ldp,
@@ -141,8 +141,7 @@ enum pa_rule_target pa_rule_adopt_match(struct pa_rule *rule, __unused struct pa
 pa_rule_priority pa_rule_random_get_max_priority(struct pa_rule *rule, struct pa_ldp *ldp)
 {
 	struct pa_rule_random *rule_r = container_of(rule, struct pa_rule_random, rule);
-	if(ldp->best_assignment //Someone else advertises
-			|| (ldp->valid && ldp->published)) //We advertise)
+	if(ldp->best_assignment || ldp->published) //No override
 			return 0;
 
 	return rule_r->rule_priority;
