@@ -1,23 +1,22 @@
 /*
  * Author: Pierre Pfister <pierre@darou.fr>
  *
- * Copyright (c) 2014 cisco Systems, Inc.
+ * Copyright (c) 2014 Cisco Systems, Inc.
  */
 
 #include "bitops.h"
 
 #include <string.h>
 
+static uint8_t bbytecpy_masks[9] =
+	{0x00, 0x80, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc, 0xfe, 0xff};
+
 void bbytecpy (uint8_t *dst, const uint8_t *src,
-		uint8_t frombit, uint8_t nbits) {
-
-	uint8_t mask = 0xff;
-	mask <<= frombit;
-	mask >>= 8 - nbits;
-	mask <<= 8 - nbits - frombit;
-
-	*dst &= ~mask;
-	*dst |= (*src & mask);
+		uint8_t frombit, uint8_t nbits)
+{
+	uint8_t mask = bbytecpy_masks[nbits] >> frombit;
+	uint8_t v = *src & mask;
+	*dst = (*dst & ~mask) | v;
 }
 
 void bmemcpy(void *dst, const void *src,

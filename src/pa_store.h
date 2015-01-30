@@ -3,12 +3,8 @@
  *
  * Copyright (c) 2014 Cisco Systems, Inc.
  *
- * Prefix storing and caching module for the prefix assignment
- * algorithm.
+ * Prefix storing and caching module for the prefix assignment algorithm.
  *
- * The API provides global and per-link prefix storage limit
- * configuration. The number of cached prefixes must be greater than
- * the number of stored prefixes. Otherwise, prefixes may be forgotten.
  */
 
 #ifndef PA_STORE_H_
@@ -20,26 +16,34 @@
 
 #include "pa_core.h"
 
-/* Maximum length of the link name, identifying the link
- * in the stable storage file.
- * DHCPv6 DUID is at most 20bytes (40 hex characters)
- * On Linux IFNAMESIZ is 16 characters
+/**
+ * Maximum length of the link name, identifying the link in the stable storage
+ * file.
+ *
+ * For example,
+ *   DHCPv6 DUID is at most 20bytes (40 hex characters)
+ *   On Linux IFNAMESIZ is 16 characters
+ *
+ * Some more space is required to differentiate different link types.
  */
 #define PA_STORE_NAMELEN 50
 
-/* Prefix parsing function used by pa_store.
- * A written or read prefix must not include
- * any space ' ', tab '\t' , newline '\n' or '#' characters.
+/**
+ * Prefix parsing function used by pa_store.
+ *
+ * pa_prefix_tostring is used to write prefixes.
+ *
+ * A written or read prefix must not include "# \t\n" characters.
  * Function prototype is:
  *    int pa_prefix_fromstring(const char *src, pa_prefix *addr, pa_plen *plen)
- * The prefix must fit in a PA_PREFIX_STRLEN
- * long buffer (null character included).
+ *
+ * The written prefix string length must be less than PA_PREFIX_STRLEN.
  *    (Mandatory when pa_store is enabled)
  */
 #define pa_prefix_fromstring(buff, p, plen) \
 		prefix_pton(buff, p, plen)
 
-/* Each stored object has a type */
+/* Each stored object has a type. */
 #define PA_STORE_PREFIX "prefix"
 #define PA_STORE_ADDR   "address"
 #define PA_STORE_WTOKEN "write_tokens"
@@ -51,41 +55,89 @@
 	"# This file was generated automatically.\n"\
 	"# Do not modify unless you know what you are doing.\n"\
 	"# Do not modify while the process is running as\n"\
-	"# modifications could be overridden.\n\n"
+	"# modifications will be overridden.\n\n"
 
-#define PA_STORE_WTOKENS_DEFAULT 10    /* Default number of write tokens when not specified in the storage file. */
-#define PA_STORE_WTOKENS_MAX     1000  /* Maximum number of write tokens */
+/* Default number of write tokens when not specified in the storage file. */
+#define PA_STORE_WTOKENS_DEFAULT 10
 
+/* Maximum number of write tokens */
+#define PA_STORE_WTOKENS_MAX     100
+
+/**
+ * PA storage main structure.
+ */
 struct pa_store {
-	/* Related to caching */
-	struct list_head links;           /* Tree containing pa_store Links */
-	struct pa_core *core;             /* The PA core the module is operating on. */
-	struct pa_user user;              /* PA user used to receive apply notifications. */
-	struct list_head prefixes;        /* All cached prefixes */
-	uint32_t max_prefixes;            /* Maximum number of remembered prefixes. */
-	uint32_t n_prefixes;              /* Number of cached prefixes. */
+	/**********************
+	 * Related to caching *
+	 **********************/
 
-	/* Related to stable storage */
-	const char *filepath;             /* Path of the file to be used for storage. */
-	uint8_t pending_changes;          /* Whether some changes should be written to stable storage. */
-	uint32_t save_delay;              /* Delay between a change and the actual write to stable storage (if a token is available). */
-	struct uloop_timeout save_timer;  /* Delay cache write into the disk. */
-	uint32_t token_count;             /* Write tokens count. */
-	uint32_t token_delay;             /* Delay to wait before a write token can be added. */
-	struct uloop_timeout token_timer; /* Counts time to add tokens. */
+	/* Tree containing pa_store Links */
+	struct list_head links;
+
+	/* The PA core the module is operating on. */
+	struct pa_core *core;
+
+	/* PA user used to receive apply notifications. */
+	struct pa_user user;
+
+	/* All cached prefixes */
+	struct list_head prefixes;
+
+	/* Maximum number of remembered prefixes. */
+	uint32_t max_prefixes;
+
+	/* Number of cached prefixes. */
+	uint32_t n_prefixes;
+
+	/**********************
+	 * Related to storage *
+	 **********************/
+
+	/* Path of the file to be used for storage. */
+	const char *filepath;
+
+	/* Whether some changes should be written to stable storage. */
+	uint8_t pending_changes;
+
+	/* Delay between a change and the actual write to stable storage (if a token is available). */
+	uint32_t save_delay;
+
+	/* Delay cache write into the disk. */
+	struct uloop_timeout save_timer;
+
+	/* Write tokens count. */
+	uint32_t token_count;
+
+	/* Delay to wait before a write token can be added. */
+	uint32_t token_delay;
+
+	/* Counts time to add tokens. */
+	struct uloop_timeout token_timer;
 };
 
-/* Structure representing a given link used by pa_store.
- * It is provided by the user, or created by pa_store when
- * encountering unknown links while reading the file.
+/**
+ * Initializes the pa storage structure.
+ *
+ * @param store The storage structure to be initialized.
+ * @param core The associated core structure.
+ * @param max_prefixes Maximum number of cached prefixes.
+ */
+void pa_store_init(struct pa_store *store, struct pa_core *core, uint32_t max_prefixes);
+
+/**
+ * Structure representing a given link used by PA store.
+ * It is provided by the user, or created by pa_store when encountering unknown
+ * links while reading the file.
  */
 struct pa_store_link {
+
 	/* The associated Link. */
 	struct pa_link *link;
 
-	/* A name without space, to be used in the storage.
-	 * When no name is specified, prefixes are cached
-	 * but not stored. */
+	/* The link name to be used in the storage.
+	 *     (Must not contain "# \t\n" characters).
+	 * When no name is specified (empty string), prefixes are cached but
+	 * not stored. */
 	char name[PA_STORE_NAMELEN];
 
 	/* Maximum number of remembered prefixes for this Link. */
@@ -94,54 +146,81 @@ struct pa_store_link {
 	/* PRIVATE to pa_store */
 	struct list_head le;      /* Linked in pa_store. */
 	struct list_head prefixes;/* List of pa_store entries. */
-	uint32_t n_prefixes;       /* Number of entries currently stored for this Link. */
+	uint32_t n_prefixes;      /* Number of entries currently stored for this Link. */
 };
 
-/* Initializes the pa storage structure.
- * pa_core must be initialized.
+/**
+ * Initializes a storage link structure.
  */
-void pa_store_init(struct pa_store *, struct pa_core *, uint32_t max_prefixes);
-
-/* Sets the file to be used for stable storage.
- * Write permissions are checked.
- * If the file exists, its content is deleted.
- * If the file does not exists, it is created.
- * Returns 0 on success and -1 in case of error (and errno is set).
- * Changes are not pushed to the file.
- */
-int pa_store_set_file(struct pa_store *, const char *filepath,
-		uint32_t save_delay, uint32_t token_delay);
-
-/* Loads the file into the cache. The content is considered
- * more recent than the cached information.
- * Returns -1 in case of error. 0 otherwise. */
-int pa_store_load(struct pa_store *, const char *filepath);
-
-/* Manually trigger cache saving into the file.
- * Returns -1 in case of error. 0 otherwise. */
-int pa_store_save(struct pa_store *);
-
-/* Notifies the desire to save the cached info
- * into stable storage. But respects delayed operation
- * and write token limitations. */
-void pa_store_updated(struct pa_store *store);
-
-/* Free all memory and cache entries.
- * But do not flush that state to the file. */
-void pa_store_term(struct pa_store *);
-
 #define pa_store_link_init(store_link, pa_link, linkname, max_px) do { \
 		(store_link)->link = pa_link; \
 		(store_link)->max_prefixes = max_px; \
 		strcpy((store_link)->name, linkname); \
 	} while(0)
 
+/**
+ * Sets the file to be used for stable storage.
+ *
+ * The file must be writable and readable. If the file does not exists, it is
+ * created.
+ *
+ * @param store The PA store structure.
+ * @param filepath Path to the file being used.
+ * @param save_delay Time before a modification is saved.
+ * @param token_delay Time before an additional token is added.
+ * @return 0 on success and -1 otherwise (errno is set).
+ */
+int pa_store_set_file(struct pa_store *, const char *filepath,
+		uint32_t save_delay, uint32_t token_delay);
+
+/**
+ * Loads the file into the cache.
+ *
+ * The content is considered more recent than the cached information.
+ *
+ * @param store The PA store structure.
+ * @param filepath Path to the file being read.
+ * @return 0 on success, -1 otherwise.
+ */
+int pa_store_load(struct pa_store *store, const char *filepath);
+
+/**
+ * Manually triggers cache saving into the file.
+ *
+ * @param store The PA store structure.
+ * @return 0 on success, -1 otherwise.
+ */
+int pa_store_save(struct pa_store *store);
+
+/**
+ * Notifies the desire to save the cached info into stable storage.
+ *
+ * It will be written after some delay and when a token is available.
+ *
+ * @param store The PA store structure.
+ */
+void pa_store_updated(struct pa_store *store);
+
+/**
+ * Free all memory and cache entries.
+ *
+ * Does not flush that state to the file.
+ *
+ * @param store The PA store structure.
+ */
+void pa_store_term(struct pa_store *store);
+
+
+
 void pa_store_link_add(struct pa_store *, struct pa_store_link *);
 void pa_store_link_remove(struct pa_store *, struct pa_store_link *);
 
-/* Rule to be used in pa_core which will propose
- * cached prefixes from more recent to less recent
- * when a new prefix can be created for a given link.
+/**
+ * PA core caching based rule.
+ *
+ * When no prefix is assigned on the given link and for the given delegated
+ * prefix, this rule will propose prefixes which were already applied to the
+ * same Link.
  */
 struct pa_store_rule {
 	struct pa_rule rule;
@@ -150,6 +229,9 @@ struct pa_store_rule {
 	pa_priority priority;
 };
 
+/**
+ * Initializes a PA store rule.
+ */
 void pa_store_rule_init(struct pa_store_rule *rule, struct pa_store *store);
 
 

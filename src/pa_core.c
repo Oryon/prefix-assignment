@@ -245,12 +245,15 @@ static void pa_routine(struct pa_ldp *ldp, bool backoff)
 	struct pa_advp *advp;
 	struct pa_pentry *pentry;
 	ldp->best_assignment = NULL;
-	btrie_for_each_updown_entry(pentry, &ldp->core->prefixes, (btrie_key_t *)&ldp->dp->prefix, ldp->dp->plen, be) {
+	btrie_for_each_updown_entry(pentry, &ldp->core->prefixes,
+			(btrie_key_t *)&ldp->dp->prefix, ldp->dp->plen, be) {
 		if(pentry->type == PAT_ADVERTISED) {
 			advp = container_of(pentry, struct pa_advp, in_core);
 			if(advp->link == ldp->link &&
-					(!ldp->best_assignment || advp->priority > ldp->best_assignment->priority ||
-					((advp->priority == ldp->best_assignment->priority) && (PA_NODE_ID_CMP(advp->node_id, ldp->best_assignment->node_id) > 0))))
+					(!ldp->best_assignment ||
+					advp->priority > ldp->best_assignment->priority ||
+					((advp->priority == ldp->best_assignment->priority) &&
+							(PA_NODE_ID_CMP(advp->node_id, ldp->best_assignment->node_id) > 0))))
 				ldp->best_assignment = advp;
 		}
 	}

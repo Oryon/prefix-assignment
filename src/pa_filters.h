@@ -3,9 +3,10 @@
  *
  * Copyright (c) 2014 Cisco Systems, Inc.
  *
- * Filters are used to pa_core in order to allow a single rule
- * to match or not match given different contexts. It allows
- * filtering and action separation.
+ * Prefix Assignment Rule Filters.
+ *
+ * Filters are used by the algorithm in order to allow a single rule to match
+ * or not match given different contexts.
  *
  */
 
@@ -15,10 +16,11 @@
 #include "pa_core.h"
 
 struct pa_filter;
-typedef int (*pa_filter_f)(struct pa_rule *, struct pa_ldp *, struct pa_filter *filter);
+typedef int (*pa_filter_f)(struct pa_rule *, struct pa_ldp *,
+		struct pa_filter *filter);
 
-/*
- * Single filter structure used by all filters defined in this file.
+/**
+ * Filter structure used by all filters defined in this file.
  */
 struct pa_filter {
 	pa_filter_f accept;

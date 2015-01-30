@@ -3,8 +3,9 @@
  *
  * Copyright (c) 2014 Cisco Systems, Inc.
  *
- * This file provides some pre-defined rules
- * to be used with pa_core.
+ * Prefix Assignment Rules.
+ *
+ * This file provides some pre-defined rules to be used with PA core.
  *
  */
 
@@ -21,14 +22,23 @@
 	(rule)->filter_accept = NULL; \
 	(rule)->filter_private = NULL;} while(0)
 
-/* When a prefix is assigned and valid, but advertised by no-one,
- * it may be adopted after some random delay.
- * The adopt rule will always adopt a prefix when possible, using the
- * specified rule_priority and advertising the adopted prefix
- * with the specified priority. */
+/**
+ * Simple adoption rule.
+ *
+ * When a prefix is assigned and valid, but advertised by no-one, it may be
+ * adopted after some random delay.
+ * The adopt rule will always adopt a prefix when possible, using the specified
+ * rule_priority and advertising the adopted prefix with the specified
+ * priority.
+ */
 struct pa_rule_adopt {
+	/* Parent rule. Set by pa_rule_adopt_init. */
 	struct pa_rule rule;
+
+	/* The internal rule priority used by this rule when matching.  */
 	pa_rule_priority rule_priority;
+
+	/* The Advertised Prefix Priority used when publishing the adopted prefix. */
 	pa_priority priority;
 };
 
@@ -39,25 +49,37 @@ enum pa_rule_target pa_rule_adopt_match(struct pa_rule *rule, struct pa_ldp *ldp
 #define pa_rule_adopt_init(rule_adopt) pa_rule_init(&(rule_adopt)->rule, \
 						pa_rule_adopt_get_max_priority, 0, pa_rule_adopt_match)
 
-/* When no prefix is assigned on a given Link,
- * a new prefix may be picked randomly.
- * This rule implements the prefix selection algorithm
- * detailed in the prefix assignment specifications.
+/**
+ * Randomized prefix selection.
+ *
+ * When no prefix is assigned on a given Link, a new prefix may be picked.
+ * This rule implements the prefix selection algorithm detailed in the prefix
+ * assignment specifications.
  */
 struct pa_rule_random {
+	/* Parent rule. Initialized with pa_rule_random_init. */
 	struct pa_rule rule;
 
-	pa_rule_priority rule_priority; /* The rule priority */
-	pa_priority priority;           /* Advertised Prefix Priority */
-	pa_plen desired_plen;           /* The desired prefix length */
+	/* The internal rule priority */
+	pa_rule_priority rule_priority;
 
-	/* Pseudo-random and random prefixes are picked
-	 * in a given set or candidates. */
+	/* The Advertised Prefix Priority used when publishing the new prefix. */
+	pa_priority priority;
+
+	/* The desired prefix length. */
+	pa_plen desired_plen;
+
+	/* Pseudo-random and random prefixes are picked in a given set of
+	 * candidates.
+	 * The larger the set, the lower the collision probability.
+	 * The smaller the set, the more space efficient the algorithm is. */
 	uint16_t random_set_size;
 
-	/* The algorithm first makes pseudo_random_tentatives
-	 * pseudo-random tentatives. */
+	/* The algorithm first makes pseudo_random_tentatives pseudo-random
+	 * tentatives. */
 	uint16_t pseudo_random_tentatives;
+
+	/* Seed and seed length used for the pseudo-random tentatives. */
 	uint8_t *pseudo_random_seed;
 	uint16_t pseudo_random_seedlen;
 };
@@ -70,17 +92,27 @@ enum pa_rule_target pa_rule_random_match(struct pa_rule *rule, struct pa_ldp *ld
 			pa_rule_random_get_max_priority, 0, pa_rule_random_match)
 
 
-/* This rule is used to reflect the desire to assign a given prefix.
+/**
+ * Prefix static configuration.
+ *
+ * This rule is used to reflect the desire to assign a given prefix.
  * It may override existing assignment depending on overriding priorities.
  */
 struct pa_rule_static {
-	struct pa_rule rule; /* The PA rule */
-	pa_prefix prefix;    /* The prefix assigned */
-	pa_plen plen;        /* The prefix length */
+	/* Parent rule. Initialized with pa_rule_static_init. */
+	struct pa_rule rule;
 
-	/* Priority and rule priority used by this rule. */
-	pa_priority priority;
+	/* The desired prefix value. */
+	pa_prefix prefix;
+
+	/* The desired prefix length. */
+	pa_plen plen;
+
+	/* The internal rule priority */
 	pa_rule_priority rule_priority;
+
+	/* The Advertised Prefix Priority used when publishing the new prefix. */
+	pa_priority priority;
 
 	/* The prefix may override any Advertised Prefix
 	 * advertised by another node with an Advertised
@@ -89,12 +121,17 @@ struct pa_rule_static {
 	 * And any Assigned Prefix which is Published
 	 * by the local node with a rule_priority
 	 * strictly lower than the override_rule_priority. */
+
+	/* This rule may override prefixes advertised with a priority
+	 * strictly lower than this priority. */
 	pa_priority override_priority;
+
+	/* This rule may override prefixes locally published with a rule priority
+	 * strictly lower than this rule priority. */
 	pa_rule_priority override_rule_priority;
 
-	/* When enabled, do not override a Published Prefix
-	 * unless the Advertised Prefix Priority is lower or equal
-	 * to override_priority.
+	/* When set, published prefixes are not override unless the Advertised
+	 * Prefix Priority is lower or equal to override_priority.
 	 * When disabled, assignment loop may happen with other nodes. */
 	uint8_t safety;
 };
@@ -106,4 +143,4 @@ enum pa_rule_target pa_rule_static_match(struct pa_rule *rule, struct pa_ldp *ld
 #define pa_rule_static_init(rule_static) pa_rule_init(&(rule_static)->rule,  \
 		pa_rule_static_get_max_priority, 0, pa_rule_static_match)
 
-#endif /* PA_RULES_H_ */
+#endif
